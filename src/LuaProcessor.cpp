@@ -9,27 +9,20 @@ LuaProcessor::LuaProcessor(const std::filesystem::path& scripts_dir,
     debug_ = (std::string(dbg) != "0");
   }
   InitLua();
-  LoadCommon();
   LoadScript();
 }
 
 void LuaProcessor::InitLua() {
   // only open what we need
-  lua_.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
-                      sol::lib::table, sol::lib::debug);
+  lua_.open_libraries(
+    sol::lib::base,
+    sol::lib::package,
+    sol::lib::string,
+    sol::lib::table,
+    sol::lib::debug,
+    sol::lib::os
+  );
   lua_["DEBUG"] = debug_;
-}
-
-void LuaProcessor::LoadCommon() {
-  for (auto& e : std::filesystem::directory_iterator(scripts_dir_ / "common")) {
-    if (e.path().extension() == ".lua") {
-      if (debug_) {
-      std::cerr << "[LuaProcessor] file: " << e.path() << " ("
-                << e.path().extension() << ")\n";
-      }
-      lua_.script_file(e.path().string());
-    }
-  }
 }
 
 std::optional<std::filesystem::path> LuaProcessor::FindScript() const {
@@ -46,6 +39,11 @@ bool LuaProcessor::LoadScript() {
   auto init_script = FindScript();
   if (!init_script.has_value())
     return false;
+
+  if (debug_) {
+    std::cerr << "[LuaProcessor] Loading "
+              << init_script->string() << "\n";
+  }
 
   // sandboxed environment inheriting globals (including common modules)
   sol::environment env(lua_, sol::create, lua_.globals());
