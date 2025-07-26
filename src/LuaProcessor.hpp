@@ -27,7 +27,7 @@ class LuaProcessor {
                                     const std::string& content) const;
 
  private:
-  void InitLua();     // opens libs
+  void InitLua();  // opens libs
   std::optional<std::filesystem::path> FindScript() const;
   bool LoadScript();  // initializes env_ and funcs_
   static void DumpResult(const sol::table& tbl);

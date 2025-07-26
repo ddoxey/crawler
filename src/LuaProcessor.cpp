@@ -14,14 +14,8 @@ LuaProcessor::LuaProcessor(const std::filesystem::path& scripts_dir,
 
 void LuaProcessor::InitLua() {
   // only open what we need
-  lua_.open_libraries(
-    sol::lib::base,
-    sol::lib::package,
-    sol::lib::string,
-    sol::lib::table,
-    sol::lib::debug,
-    sol::lib::os
-  );
+  lua_.open_libraries(sol::lib::base, sol::lib::package, sol::lib::string,
+                      sol::lib::table, sol::lib::debug, sol::lib::os);
   lua_["DEBUG"] = debug_;
 }
 
@@ -41,15 +35,12 @@ bool LuaProcessor::LoadScript() {
     return false;
 
   if (debug_) {
-    std::cerr << "[LuaProcessor] Loading "
-              << init_script->string() << "\n";
+    std::cerr << "[LuaProcessor] Loading " << *init_script << "\n";
   }
 
-  // sandboxed environment inheriting globals (including common modules)
   sol::environment env(lua_, sol::create, lua_.globals());
   lua_.script_file(init_script->string(), env);
 
-  // grab the per-domain process() entrypoint
   sol::protected_function func = env["process"];
   if (!func.valid()) {
     std::cerr << "[LuaProcessor] " << *init_script << " defines no process()\n";
@@ -106,8 +97,9 @@ std::optional<sol::table> LuaProcessor::Process(
     return std::nullopt;
   }
 
-  if (debug_)
+  if (debug_) {
     DumpResult(result);
+  }
 
   return {result};
 }
