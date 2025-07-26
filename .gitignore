@@ -2,6 +2,6 @@ cache/
 results/
 build/
 conf/
-var/
+third_party/
 *.o
 *.luac
