@@ -104,46 +104,64 @@ std::optional<sol::table> LuaProcessor::Process(
   return {result};
 }
 
-void LuaProcessor::DumpResult(const sol::table& tbl) {
-  std::cout << "Dumping Lua table:\n";
-  for (auto& kv : tbl) {
-    sol::object key = kv.first;
-    sol::object val = kv.second;
-
-    // --- key to string ---
-    std::string keyStr;
-    switch (key.get_type()) {
-      case sol::type::string:
-        keyStr = key.as<std::string>();
-        break;
-      case sol::type::number:
-        keyStr = std::to_string(key.as<double>());
-        break;
-      default:
-        keyStr =
-          "<type " + std::to_string(static_cast<int>(key.get_type())) + ">";
+bool is_array_like(const sol::table& tbl) {
+  std::size_t i = 1;
+  for (auto& pair : tbl) {
+    if (!pair.first.is<int>() || pair.first.as<int>() != static_cast<int>(i)) {
+      return false;
     }
-
-    std::cout << "  [" << keyStr << "] = ";
-
-    // --- value to string/numeric/bool/nil ---
-    switch (val.get_type()) {
-      case sol::type::string:
-        std::cout << '"' << val.as<std::string>() << '"';
-        break;
-      case sol::type::number:
-        std::cout << val.as<double>();
-        break;
-      case sol::type::boolean:
-        std::cout << std::boolalpha << val.as<bool>();
-        break;
-      case sol::type::nil:
-        std::cout << "nil";
-        break;
-      default:
-        // fallback to printing the raw enum
-        std::cout << "<type " << static_cast<int>(val.get_type()) << ">";
-    }
-    std::cout << "\n";
+    ++i;
   }
+  return true;
+}
+
+nlohmann::json LuaProcessor::LuaTableToJson(const sol::table& tbl) {
+  nlohmann::json j;
+
+  if (is_array_like(tbl)) {
+    for (std::size_t i = 1; i <= tbl.size(); ++i) {
+      j.push_back(LuaTableToJson(sol::object(tbl[i])));
+    }
+  } else {
+    for (auto& pair : tbl) {
+      const sol::object& key = pair.first;
+      const sol::object& val = pair.second;
+
+      nlohmann::json key_json;
+      if (key.is<std::string>()) {
+        key_json = key.as<std::string>();
+      } else if (key.is<int>()) {
+        key_json = std::to_string(key.as<int>());
+      } else {
+        key_json = "<unsupported key>";
+      }
+
+      j[key_json] = LuaTableToJson(val);
+    }
+  }
+
+  return j;
+}
+
+nlohmann::json LuaProcessor::LuaTableToJson(const sol::object& obj) {
+  switch (obj.get_type()) {
+    case sol::type::nil:
+      return nullptr;
+    case sol::type::boolean:
+      return obj.as<bool>();
+    case sol::type::number:
+      return obj.as<double>();
+    case sol::type::string:
+      return obj.as<std::string>();
+    case sol::type::table:
+      return LuaTableToJson(obj.as<sol::table>());
+    default:
+      return "<unsupported value>";
+  }
+}
+
+void LuaProcessor::DumpResult(const sol::table& tbl,
+                              const std::string& indent) {
+  nlohmann::json j = LuaTableToJson(tbl);
+  std::cout << j.dump(2) << std::endl;  // pretty-print with 2-space indent
 }

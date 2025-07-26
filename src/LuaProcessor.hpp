@@ -1,10 +1,13 @@
 #pragma once
+
 #include <filesystem>
-#include <string>
-#include <vector>
+#include <nlohmann/json.hpp>
 #include <optional>
-#include <unordered_map>
 #include <sol/sol.hpp>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "URL.hpp"
 
 class LuaProcessor {
@@ -30,7 +33,9 @@ class LuaProcessor {
   void InitLua();  // opens libs
   std::optional<std::filesystem::path> FindScript() const;
   bool LoadScript();  // initializes env_ and funcs_
-  static void DumpResult(const sol::table& tbl);
+  static nlohmann::json LuaTableToJson(const sol::table& obj);
+  static nlohmann::json LuaTableToJson(const sol::object& obj);
+  static void DumpResult(const sol::table& tbl, const std::string& index = "");
 
   std::filesystem::path scripts_dir_;
 
