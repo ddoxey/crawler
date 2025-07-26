@@ -1,0 +1,8 @@
+{
+    "cache_dir": "~/.cache/crawler/cache",
+    "data_dir": "~/.cache/crawler/data",
+    "plugins_dir": "~/.cache/crawler/plugins",
+    "script_dir": "~/.cache/crawler/scripts",
+    "rate_limit_ms": 500,
+    "cache_age_limit_s": 86400
+}
