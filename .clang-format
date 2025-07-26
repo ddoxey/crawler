@@ -1,0 +1,36 @@
+---
+# Tell clang-format to start from Google’s style rules
+BasedOnStyle: Google
+
+# Google style uses 2-space indents
+IndentWidth: 2
+
+# Keep lines to a reasonable length
+ColumnLimit: 80
+
+# Always use spaces, never tabs
+UseTab: Never
+
+# In Google style, pointers/references bind to the type (e.g. “int* p” not “int *p”)
+PointerAlignment: Left
+
+# Don’t re-order or group your includes automatically
+SortIncludes: false
+
+# By default, Google style attaches braces rather than putting them on their own line,
+# so we don’t change BreakBeforeBraces (Google’s default is “Attach”).
+# If you explicitly want to see it here, you can uncomment:
+# BreakBeforeBraces: Attach
+
+# Don’t allow short if/for/while on a single line; Google requires braces even for one-statement bodies.
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+
+# Don’t put spaces inside empty parentheses: “Foo()”, not “Foo( )”
+SpaceInEmptyParentheses: false
+
+# If you want to adjust continuation indent (Google uses 2 spaces)
+ContinuationIndentWidth: 2
+...
+

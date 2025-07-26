@@ -1,0 +1,7 @@
+cache/
+results/
+build/
+conf/
+var/
+*.o
+*.luac
