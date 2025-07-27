@@ -1,9 +1,90 @@
 #include "URL.hpp"
+
 #include <regex>
 #include <iostream>
+#include <openssl/sha.h>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 URL::URL(const std::string& urlString) : rawUrl_(urlString) {
   Parse();
+}
+
+URL& URL::operator=(const std::string& urlString) {
+  if (urlString.find("://") != std::string::npos) {
+    // absolute URL: assign and reparse directly
+    rawUrl_ = urlString;
+    queryParams_.reset();
+    Parse();
+  } else {
+    // relative URL: resolve against current, then assign via copy‐assign
+    URL resolved = this->resolve(urlString);
+    *this = resolved;  // invokes the default URL& operator=(const URL&)
+  }
+  return *this;
+}
+
+// helper: join and normalize “/a/b/../c” → “/a/c”
+static std::string normalize_path(const std::string& raw) {
+  std::vector<std::string> parts;
+  for (size_t i = 0, n = raw.size(); i < n;) {
+    // split on '/'
+    size_t j = raw.find('/', i);
+    if (j == std::string::npos)
+      j = n;
+    std::string seg = raw.substr(i, j - i);
+    if (seg == "..") {
+      if (!parts.empty())
+        parts.pop_back();
+    } else if (seg != "" && seg != ".") {
+      parts.push_back(seg);
+    }
+    i = j + 1;
+  }
+  std::string out = "/";
+  for (size_t k = 0; k < parts.size(); ++k) {
+    out += parts[k];
+    if (k + 1 < parts.size())
+      out += "/";
+  }
+  return out;
+}
+
+URL URL::resolve(const std::string& ref) const {
+  // if ref is absolute (has “scheme://”), just construct it
+  if (ref.find("://") != std::string::npos) {
+    return URL(ref);
+  }
+
+  // otherwise, it's relative. We need the base’s scheme and host,
+  // and to resolve the path:
+  std::string base = rawUrl_;  // or build from scheme_ + "://" + host_
+  // Find the path portion of the base:
+  auto pos = base.find("://");
+  pos = (pos == std::string::npos) ? 0 : base.find('/', pos + 3);
+  std::string origin = (pos == std::string::npos) ? base : base.substr(0, pos);
+
+  // Decide the new path:
+  std::string newPath;
+  if (!ref.empty() && ref[0] == '/') {
+    // root‑relative
+    newPath = normalize_path(ref);
+  } else {
+    // relative to base path’s directory
+    std::string basePath = "/";
+    if (pos != std::string::npos) {
+      // include everything up to last '/'
+      auto slash = base.find_last_of('/', base.size());
+      if (slash != std::string::npos)
+        basePath = base.substr(pos, slash - pos);
+    }
+    newPath = normalize_path(basePath + "/" + ref);
+  }
+
+  // Re‑assemble absolute URL:
+  std::string abs = origin + newPath;
+  return URL(abs);
 }
 
 void URL::Parse() {
@@ -22,6 +103,7 @@ void URL::Parse() {
     path_ = match[4].matched ? match[4].str() : "";
     query_ = match[5].matched ? match[5].str() : "";
     fragment_ = match[6].matched ? match[6].str().substr(1) : "";
+    sha256_.clear();
   } else {
     std::cerr << "INVALID URL: " << rawUrl_ << std::endl;
   }
@@ -206,4 +288,18 @@ void URL::AppendQueryParam(const std::string& key,
 
 void URL::SetFragment(const std::string& f) {
   fragment_ = f;
+}
+
+std::string URL::GetSha256() const {
+  if (sha256_.empty()) {
+    auto url = ToString();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)url.c_str(), url.size(), hash);
+    std::ostringstream oss;
+    for (auto byte : hash) {
+      oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
+    }
+    sha256_ = oss.str();
+  }
+  return sha256_;
 }

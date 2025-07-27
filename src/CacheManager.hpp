@@ -1,7 +1,10 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <filesystem>
+
+#include "HttpResponse.hpp"
 #include "URL.hpp"
 
 class CacheManager {
@@ -17,6 +20,9 @@ class CacheManager {
   std::optional<std::string> Fetch(const URL& url) const;
 
   void Store(const URL& url, const std::string& content);
+  void Store(const URL& url, const nlohmann::json& data,
+             const std::string& ext = "json");
+  void Store(const URL& url, const HttpResponse& response);
 
  private:
   bool IsExpired(const std::filesystem::path& file) const;

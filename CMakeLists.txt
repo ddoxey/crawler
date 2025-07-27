@@ -12,6 +12,7 @@ add_executable(crawler
     src/CacheManager.cpp
     src/LuaProcessor.cpp
     src/ResultWriter.cpp
+    src/HttpResponse.cpp
     src/Config.cpp
 )
 
@@ -24,13 +25,13 @@ find_package(PkgConfig REQUIRED)
 pkg_search_module(LUA REQUIRED lua)
 
 target_include_directories(crawler
-    PRIVATE
+  PRIVATE
     ${LUA_INCLUDE_DIRS}
     third_party/sol2/include
 )
 
 target_link_libraries(crawler
-    PRIVATE
+  PRIVATE
     ${CURL_LIBRARIES}
     ${LUA_LIBRARIES}
     ${OPENSSL_LIBRARIES}

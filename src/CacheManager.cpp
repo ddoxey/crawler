@@ -2,19 +2,6 @@
 
 #include <fstream>
 #include <filesystem>
-#include <openssl/sha.h>
-#include <sstream>
-#include <iomanip>
-
-static std::string HashUrl(const std::string& url) {
-  unsigned char hash[SHA256_DIGEST_LENGTH];
-  SHA256((const unsigned char*)url.c_str(), url.size(), hash);
-  std::ostringstream oss;
-  for (auto byte : hash) {
-    oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
-  }
-  return oss.str();
-}
 
 bool CacheManager::IsExpired(const std::filesystem::path& file) const {
   auto ftime = std::filesystem::last_write_time(file);
@@ -25,12 +12,12 @@ bool CacheManager::IsExpired(const std::filesystem::path& file) const {
 }
 
 bool CacheManager::IsCached(const URL& url) const {
-  std::filesystem::path cache_filename = dir_ / HashUrl(url.ToString());
+  std::filesystem::path cache_filename = dir_ / url.GetSha256();
   return std::filesystem::exists(cache_filename) && !IsExpired(cache_filename);
 }
 
 std::optional<std::string> CacheManager::Fetch(const URL& url) const {
-  std::filesystem::path cache_filename = dir_ / HashUrl(url.ToString());
+  std::filesystem::path cache_filename = dir_ / url.GetSha256();
   if (std::filesystem::exists(cache_filename) && !IsExpired(cache_filename)) {
     std::ifstream file(cache_filename);
     return std::string((std::istreambuf_iterator<char>(file)),
@@ -40,7 +27,24 @@ std::optional<std::string> CacheManager::Fetch(const URL& url) const {
 }
 
 void CacheManager::Store(const URL& url, const std::string& content) {
-  std::filesystem::path cache_filename = dir_ / HashUrl(url.ToString());
+  std::filesystem::path cache_filename = dir_ / url.GetSha256();
   std::ofstream file(cache_filename);
   file << content;
+}
+
+void CacheManager::Store(const URL& url, const nlohmann::json& data,
+                         const std::string& ext) {
+  std::filesystem::path cache_filename = dir_ / url.GetSha256();
+  cache_filename.replace_extension(ext);
+  std::ofstream file(cache_filename);
+  file << data.dump(2) << std::endl;
+}
+
+void CacheManager::Store(const URL& url, const HttpResponse& response) {
+  Store(url, response.GetBody());
+  nlohmann::json headers;
+  for (const auto& [key, val] : response.GetHeaders()) {
+    headers[key] = val;
+  }
+  Store(url, headers, "headers");
 }

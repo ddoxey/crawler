@@ -10,19 +10,22 @@ enable_testing()
 
 include(GoogleTest)
 
+find_package(OpenSSL REQUIRED)
+
 add_executable(test_url
     test_url.cpp
     "${PROJECT_SOURCE_DIR}/src/URL.cpp"
 )
 
 target_include_directories(test_url
-    PRIVATE
+  PRIVATE
     "${PROJECT_SOURCE_DIR}/src"
 )
 target_link_libraries(test_url
-    PRIVATE
+  PRIVATE
     GTest::gtest
     GTest::gtest_main
+    ${OPENSSL_LIBRARIES}
     pthread
 )
 

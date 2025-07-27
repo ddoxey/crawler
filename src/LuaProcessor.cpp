@@ -56,7 +56,7 @@ bool LuaProcessor::HasScript() const {
   return func_.valid();
 }
 
-std::optional<sol::table> LuaProcessor::Process(
+std::optional<nlohmann::json> LuaProcessor::Process(
   const URL& url, const std::string& content) const {
   const auto domain = url.GetDomain();
 
@@ -97,11 +97,13 @@ std::optional<sol::table> LuaProcessor::Process(
     return std::nullopt;
   }
 
+  nlohmann::json j = LuaTableToJson(sol::table{result});
+
   if (debug_) {
-    DumpResult(result);
+    std::cerr << j.dump(2) << std::endl;  // pretty-print with 2-space indent
   }
 
-  return {result};
+  return {j};
 }
 
 bool is_array_like(const sol::table& tbl) {
@@ -158,10 +160,4 @@ nlohmann::json LuaProcessor::LuaTableToJson(const sol::object& obj) {
     default:
       return "<unsupported value>";
   }
-}
-
-void LuaProcessor::DumpResult(const sol::table& tbl,
-                              const std::string& indent) {
-  nlohmann::json j = LuaTableToJson(tbl);
-  std::cout << j.dump(2) << std::endl;  // pretty-print with 2-space indent
 }

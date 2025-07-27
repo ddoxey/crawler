@@ -6,7 +6,10 @@
 
 class URL {
  public:
-  explicit URL(const std::string& urlString);
+  explicit URL(const std::string& url_string);
+
+  URL& operator=(const std::string& url_string);
+  URL resolve(const std::string& ref) const;
 
   bool IsValid() const;
   std::string GetScheme() const;
@@ -28,6 +31,7 @@ class URL {
   void SetFragment(const std::string& f);
 
   std::string ToString() const;
+  std::string GetSha256() const;
 
   // Equality‐operator: two URLs are “equal” if their canonical string forms
   // match
@@ -44,6 +48,7 @@ class URL {
  private:
   std::string rawUrl_;
   std::string scheme_, host_, path_, query_, fragment_;
+  mutable std::string sha256_;
   mutable std::optional<
     std::vector<std::pair<std::string, std::optional<std::string>>>>
     queryParams_;

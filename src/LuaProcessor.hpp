@@ -26,8 +26,8 @@ class LuaProcessor {
 
   /// Run all the preloaded `process` functions for this URL's domain.
   /// Returns a vector of result‐tables (one per script).
-  std::optional<sol::table> Process(const URL& url,
-                                    const std::string& content) const;
+  std::optional<nlohmann::json> Process(const URL& url,
+                                        const std::string& content) const;
 
  private:
   void InitLua();  // opens libs
@@ -35,7 +35,6 @@ class LuaProcessor {
   bool LoadScript();  // initializes env_ and funcs_
   static nlohmann::json LuaTableToJson(const sol::table& obj);
   static nlohmann::json LuaTableToJson(const sol::object& obj);
-  static void DumpResult(const sol::table& tbl, const std::string& index = "");
 
   std::filesystem::path scripts_dir_;
 
