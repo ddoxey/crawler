@@ -24,5 +24,4 @@ class Crawler {
   std::set<URL> urls_;
   CacheManager& cache_;
   LuaProcessor& luap_;
-  bool debug_{false};
 };

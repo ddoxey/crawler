@@ -42,5 +42,4 @@ class LuaProcessor {
   sol::state lua_;
   sol::environment env_;
   sol::protected_function func_;
-  bool debug_{false};
 };
