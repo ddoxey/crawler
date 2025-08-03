@@ -62,11 +62,10 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
 
   curl_easy_setopt(curl, CURLOPT_URL, url.ToString().c_str());
 
-  // Certs
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
+
   curl_easy_setopt(curl, CURLOPT_CAINFO,
-                   "/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt");
-  curl_easy_setopt(curl, CURLOPT_CAPATH,
-                   "/etc/pki/ca-trust/extracted/openssl/");
+                   "/etc/pki/tls/certs/ca-bundle.crt");
 
   // Body callback
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteBodyCallback);
