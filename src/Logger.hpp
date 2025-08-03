@@ -55,6 +55,28 @@ inline Level CurrentLevel() {
   return lvl;
 }
 
+// returns true if a message at level `msg` should be suppressed
+inline bool ShouldMute(Level msg) {
+  auto lvl = CurrentLevel();
+  switch (msg) {
+    case Level::Debug:
+      // only print when we’re in Debug mode
+      return lvl != Level::Debug;
+
+    case Level::Info:
+      // print in Info or Debug modes
+      return (lvl != Level::Debug && lvl != Level::Info);
+
+    case Level::Warning:
+    case Level::Error:
+      // always print
+      return false;
+
+    default:
+      return true;
+  }
+}
+
 inline bool is_tty() {
   return ::isatty(::fileno(stderr)) != 0;
 }
@@ -85,10 +107,10 @@ inline constexpr char const* colorCode(Level L) {
 // and funnels every << through itself.
 class LogEntry {
  public:
-  LogEntry(Level L) : lvl(L), muted(L < CurrentLevel()), lock(log_mutex()) {
+  LogEntry(Level L) : lvl(L), muted(ShouldMute(L)), lock(log_mutex()) {
     if (!muted) {
       if (is_tty()) {
-        std::cerr << '[' << colorCode(lvl);
+        std::cerr << colorCode(lvl);
       }
     }
   }
@@ -96,7 +118,7 @@ class LogEntry {
   ~LogEntry() {
     if (!muted) {
       if (is_tty()) {
-        std::cerr << RESET << ']';
+        std::cerr << RESET;
       }
       std::cerr << std::endl;
     }
