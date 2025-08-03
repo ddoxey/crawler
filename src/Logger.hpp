@@ -1,9 +1,13 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
+#include <cstdio>  // for fileno()
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <mutex>
 #include <nlohmann/json.hpp>
+#include <string>
+#include <unistd.h>  // for isatty()
 
 namespace logr {
 
@@ -35,7 +39,7 @@ inline Level CurrentLevel() {
     if (auto* dbg = std::getenv("DEBUG")) {
       try {
         int d = std::stoi(dbg);
-        if (d <= 1)
+        if (d == 1)
           base = Level::Debug;
         else if (d == 2)
           base = Level::Info;
@@ -51,44 +55,119 @@ inline Level CurrentLevel() {
   return lvl;
 }
 
-class NullBuffer : public std::streambuf {
-  int overflow(int c) override {
-    return c;
+inline bool is_tty() {
+  return ::isatty(::fileno(stderr)) != 0;
+}
+
+// ANSI escape sequences
+static constexpr char const* RESET = "\033[0m";
+static constexpr char const* CYAN = "\033[36m";
+static constexpr char const* GREEN = "\033[32m";
+static constexpr char const* YELLOW = "\033[33m";
+static constexpr char const* RED = "\033[31m";
+
+inline constexpr char const* colorCode(Level L) {
+  switch (L) {
+    case Level::Debug:
+      return CYAN;
+    case Level::Info:
+      return GREEN;
+    case Level::Warning:
+      return YELLOW;
+    case Level::Error:
+      return RED;
+    default:
+      return RESET;
   }
-};
-inline NullBuffer nullBuffer;
-inline std::ostream nullStream{&nullBuffer};
+}
 
-class Logger {
-  Level lvl_;
-
+// A tiny RAII proxy that does prefix in ctor, suffix in dtor,
+// and funnels every << through itself.
+class LogEntry {
  public:
-  explicit Logger(Level L) : lvl_(L) {
+  LogEntry(Level L) : lvl(L), muted(L < CurrentLevel()), lock(log_mutex()) {
+    if (!muted) {
+      if (is_tty()) {
+        std::cerr << '[' << colorCode(lvl);
+      }
+    }
   }
 
-  template <typename T>
-  std::ostream& operator<<(T const& v) const {
-    return (lvl_ < CurrentLevel() ? nullStream : std::cerr) << v;
+  ~LogEntry() {
+    if (!muted) {
+      if (is_tty()) {
+        std::cerr << RESET << ']';
+      }
+      std::cerr << std::endl;
+    }
   }
-  using Manip = std::ostream& (*)(std::ostream&);
-  std::ostream& operator<<(Manip m) const {
-    return (lvl_ < CurrentLevel() ? m(nullStream) : m(std::cerr));
+
+  LogEntry(LogEntry&&) noexcept = default;
+  LogEntry& operator=(LogEntry&&) noexcept = default;
+
+  // (and to be explicit)
+  LogEntry(const LogEntry&) = delete;
+  LogEntry& operator=(const LogEntry&) = delete;
+
+  // payload insertion
+  template <typename T>
+  LogEntry& operator<<(T const& v) {
+    if (!muted) {
+      std::cerr << v;
+    }
+    return *this;
+  }
+
+  LogEntry& operator<<(std::ostream& (*m)(std::ostream&)) {
+    if (!muted) {
+      m(std::cerr);
+    }
+    return *this;
+  }
+
+ private:
+  Level lvl;
+  bool muted;
+  std::unique_lock<std::mutex> lock;
+
+  // one mutex for all entries, to prevent interleaving
+  static std::mutex& log_mutex() {
+    static std::mutex m;
+    return m;
   }
 };
 
-inline Logger debug{Level::Debug};
-inline Logger info{Level::Info};
-inline Logger warning{Level::Warning};
-inline Logger error{Level::Error};
+struct Logger {
+  Level lvl;
+  constexpr Logger(Level L) : lvl(L) {
+  }
 
+  // the magic: first << on Logger gives you a LogEntry
+  template <typename T>
+  LogEntry operator<<(T const& v) const {
+    LogEntry e(lvl);
+    e << v;
+    return e;  // most compilers will apply NRVO here, but it's not guaranteed
+  }
+
+  LogEntry operator<<(std::ostream& (*m)(std::ostream&)) const {
+    LogEntry e(lvl);
+    e << m;
+    return e;
+  }
+};
+
+inline constexpr Logger debug{Level::Debug};
+inline constexpr Logger info{Level::Info};
+inline constexpr Logger warning{Level::Warning};
+inline constexpr Logger error{Level::Error};
 }  // namespace logr
 
 // ─── macros to guard whole blocks
 // ────────────────────────────────────────────── Usage:
 //   IF_DEBUG {
 //     logr::debug << "expensive: "
-//                 << expensive_function()
-//                 << std::endl;
+//                 << expensive_function();
 //   }
 
 #define IF_DEBUG if (logr::CurrentLevel() <= logr::Level::Debug)

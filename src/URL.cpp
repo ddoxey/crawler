@@ -1,4 +1,5 @@
 #include "URL.hpp"
+#include "Logger.hpp"
 
 #include <regex>
 #include <iostream>
@@ -105,7 +106,7 @@ void URL::Parse() {
     fragment_ = match[6].matched ? match[6].str().substr(1) : "";
     sha256_.clear();
   } else {
-    std::cerr << "INVALID URL: " << rawUrl_ << std::endl;
+    logr::warning << "INVALID URL: " << rawUrl_;
   }
 }
 

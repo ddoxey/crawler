@@ -2,11 +2,12 @@
 #include <future>
 #include <unordered_set>
 
-#include "Config.hpp"
 #include "CacheManager.hpp"
+#include "Config.hpp"
+#include "Crawler.hpp"
+#include "Logger.hpp"
 #include "LuaProcessor.hpp"
 #include "URLManager.hpp"
-#include "Crawler.hpp"
 
 int main(int argc, char* argv[]) {
   // Build an allow-list from any command-line args, all lower-cased
@@ -18,20 +19,20 @@ int main(int argc, char* argv[]) {
     allowed.insert(URL(s));
   }
   if (allowed.empty()) {
-    std::cout << "Crawler starting for all configured domains ..." << std::endl;
+    logr::info << "Crawler starting for all configured domains ...";
   } else {
-    std::cout << "Crawling only these domains:\n";
+    logr::info << "Crawling only these domains:";
     for (auto const& d : allowed) {
-      std::cout << "  - " << d << "\n";
+      logr::info << "  - " << d;
     }
   }
 
   Config conf;
 
-  std::cout << " cache dir: " << conf.GetCacheDir() << std::endl;
-  std::cout << "  data dir: " << conf.GetDataDir() << std::endl;
-  std::cout << "plugin dir: " << conf.GetPluginsDir() << std::endl;
-  std::cout << "script dir: " << conf.GetScriptDir() << std::endl;
+  logr::info << " cache dir: " << conf.GetCacheDir();
+  logr::info << "  data dir: " << conf.GetDataDir();
+  logr::info << "plugin dir: " << conf.GetPluginsDir();
+  logr::info << "script dir: " << conf.GetScriptDir();
 
   CacheManager cache(conf.GetCacheDir(), conf.GetCacheAgeLimit());
   URLManager urlm(conf.GetDataDir());
@@ -39,7 +40,7 @@ int main(int argc, char* argv[]) {
   auto batches = urlm.GetBatchesByDomain();
 
   if (batches.size() == 0) {
-    std::cerr << "No URLs configured in: " << conf.GetDataDir() << std::endl;
+    logr::warning << "No URLs configured in: " << conf.GetDataDir();
     return 1;
   }
 
@@ -53,7 +54,7 @@ int main(int argc, char* argv[]) {
 
     futures.emplace_back(
       std::async(std::launch::async, [domain, batch, &cache, &conf]() mutable {
-        std::cout << domain << " crawler running\n";
+        logr::info << domain << " crawler running";
         LuaProcessor luap(conf.GetScriptDir(), domain);
         if (luap.HasScript()) {
           Crawler crawler(batch, cache, luap);

@@ -26,7 +26,7 @@ std::optional<std::filesystem::path> LuaProcessor::FindScript() const {
     return {entry};
   }
   logr::debug << "[LuaProcessor] No such file: " << domain_.GetDomain()
-              << "/init.lua\n";
+              << "/init.lua";
   return std::nullopt;
 }
 
@@ -35,15 +35,14 @@ bool LuaProcessor::LoadScript() {
   if (!init_script.has_value())
     return false;
 
-  logr::debug << "[LuaProcessor] Loading " << *init_script << "\n";
+  logr::debug << "[LuaProcessor] Loading " << *init_script;
 
   sol::environment env(lua_, sol::create, lua_.globals());
   lua_.script_file(init_script->string(), env);
 
   sol::protected_function func = env["process"];
   if (!func.valid()) {
-    logr::debug << "[LuaProcessor] " << *init_script
-                << " defines no process()\n";
+    logr::debug << "[LuaProcessor] " << *init_script << " defines no process()";
     return false;
   }
 
@@ -61,7 +60,7 @@ std::optional<nlohmann::json> LuaProcessor::Process(
   const auto domain = url.GetDomain();
 
   if (domain != domain_) {
-    logr::debug << "[LuaProcessor] No scripts for " << domain << "\n";
+    logr::debug << "[LuaProcessor] No scripts for " << domain;
     return std::nullopt;
   }
 
@@ -69,21 +68,21 @@ std::optional<nlohmann::json> LuaProcessor::Process(
 
   if (!result.valid()) {
     sol::error err = result;
-    logr::warning << "[LuaProcessor] error: " << err.what() << "\n";
+    logr::warning << "[LuaProcessor] error: " << err.what();
     return std::nullopt;
   }
 
   if (result.return_count() < 1) {
-    logr::warning << "[LuaProcessor] 'process' return no results\n";
+    logr::warning << "[LuaProcessor] 'process' return no results";
     return std::nullopt;
   }
 
   if (result.get_type() != sol::type::table) {
-    logr::warning << "[LuaProcessor] 'process' did not return a table\n";
+    logr::warning << "[LuaProcessor] 'process' did not return a table";
     IF_WARNING {
       auto t = result.get_type();
       using UT = std::underlying_type_t<sol::type>;
-      logr::warning << "Lua returned type: " << static_cast<UT>(t) << "\n";
+      logr::warning << "Lua returned type: " << static_cast<UT>(t);
     }
     return std::nullopt;
   }
@@ -91,7 +90,7 @@ std::optional<nlohmann::json> LuaProcessor::Process(
   nlohmann::json result_j = LuaTableToJson(sol::table{result});
 
   IF_DEBUG {
-    logr::debug << result_j.dump(2) << std::endl;
+    logr::debug << result_j.dump(2);
   }
 
   return {result_j};

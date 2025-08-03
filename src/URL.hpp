@@ -57,16 +57,15 @@ class URL {
   void ParseQueryParams() const;
 };
 
-/// Free‐function overload of operator<< so you can do:
-///    std::cout << myUrlObj << "\n";
+/// Free‐function overload of operator<< to support:
+///    std::cout << url_obj << "\n";
 inline std::ostream& operator<<(std::ostream& os, const URL& u) {
   os << u.ToString();
   return os;
 }
 
 namespace std {
-/// std::hash<URL> specialization so you can
-/// use URL in unordered_map/set
+/// std::hash<URL> specialization to support URL in unordered_map/set
 template <>
 struct hash<URL> {
   size_t operator()(const URL& u) const noexcept {

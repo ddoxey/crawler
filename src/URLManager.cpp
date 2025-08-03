@@ -1,4 +1,5 @@
 #include "URL.hpp"
+#include "Logger.hpp"
 #include "URLManager.hpp"
 #include <fstream>
 #include <iostream>
@@ -11,18 +12,18 @@ URLManager::URLManager(const std::filesystem::path& dir) : dir_{dir} {
   if (!std::filesystem::is_directory(dir_)) {
     throw std::runtime_error("URLManager: not a directory: " + dir_.string());
   }
-  std::cout << "DIR: " << dir_ << "\n";
+  logr::info << "DIR: " << dir_;
 
   for (auto const& entry : std::filesystem::directory_iterator(dir_)) {
     if (!entry.is_regular_file()) {
       continue;
     }
-    std::cout << "FILE: " << entry << "\n";
+    logr::info << "FILE: " << entry;
     try {
       LoadFromFile(entry.path());
     } catch (const std::exception& ex) {
-      std::cerr << "Warning: URLManager failed to load \""
-                << entry.path().string() << "\": " << ex.what() << "\n";
+      logr::warning << "Warning: URLManager failed to load \""
+                    << entry.path().string() << "\": " << ex.what();
     }
   }
 }

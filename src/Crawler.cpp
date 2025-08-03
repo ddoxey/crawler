@@ -11,19 +11,19 @@ Crawler::Crawler(const std::set<URL>& batch, CacheManager& cache,
 
 void Crawler::Crawl() {
   for (URL url : urls_) {
-    logr::debug << std::endl;
+    logr::debug;
     for (size_t attempt = 1; attempt <= 3; attempt++) {
       auto content = cache_.Fetch(url);
-      logr::debug << " Attempt: " << attempt << std::endl;
-      logr::debug << "     URL: " << url << std::endl;
-      logr::debug << "  SHA256: " << url.GetSha256() << std::endl;
+      logr::debug << " Attempt: " << attempt;
+      logr::debug << "     URL: " << url;
+      logr::debug << "  SHA256: " << url.GetSha256();
       if (!content.has_value()) {
         auto response = Fetch(url);
         if (!response.has_value()) {
           break;
         }
         if (response->IsOkay()) {
-          logr::debug << "HTTP OK" << std::endl;
+          logr::debug << "HTTP OK";
           content.reset();
           content = response->GetBody();
           cache_.Store(url, *response);
@@ -31,11 +31,11 @@ void Crawler::Crawl() {
           auto location = response->GetHeader("Location");
           if (location.has_value()) {
             cache_.Store(url, *response);
-            logr::debug << "REDIRECT: " << *location << std::endl;
+            logr::info << "REDIRECT: " << *location;
             url = *location;
             continue;
           }
-          logr::debug << "BAD REDIRECT" << std::endl;
+          logr::debug << "BAD REDIRECT";
           break;
         }
       }
@@ -45,7 +45,7 @@ void Crawler::Crawl() {
         }
         break;
       }
-      logr::debug << std::endl;
+      logr::debug;
     }
   }
 }
@@ -54,7 +54,7 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   CURL* curl = curl_easy_init();
 
   if (!curl) {
-    logr::debug << "[Crawler] failed to init CURL\n";
+    logr::debug << "[Crawler] failed to init CURL";
     return std::nullopt;
   }
 
@@ -64,8 +64,7 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
 
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
 
-  curl_easy_setopt(curl, CURLOPT_CAINFO,
-                   "/etc/pki/tls/certs/ca-bundle.crt");
+  curl_easy_setopt(curl, CURLOPT_CAINFO, "/etc/pki/tls/certs/ca-bundle.crt");
 
   // Body callback
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteBodyCallback);
@@ -85,8 +84,7 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   curl_easy_cleanup(curl);
 
   if (code != CURLE_OK) {
-    logr::warning << "[Crawler] CURL error: " << curl_easy_strerror(code)
-                  << "\n";
+    logr::warning << "[Crawler] CURL error: " << curl_easy_strerror(code);
     return std::nullopt;
   }
 
