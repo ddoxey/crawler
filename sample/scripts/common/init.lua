@@ -29,19 +29,22 @@ function M.parse_tns(html)
   for raw in html:gmatch("[+%d%(%)%s%-%._]+") do
     local digits = raw:gsub("%D", "")
 
-    -- Step 1: Normalize to 10 digits
-    if #digits == 11 and digits:sub(1,1) == "1" then
+    if digits:sub(1,1) == "1" then
       digits = digits:sub(2)
-    elseif #digits ~= 10 then
-      goto continue  -- reject
     end
 
-    -- Step 2: Validate area code (first digit not 0 or 1)
-    if digits:sub(1,1) == "0" or digits:sub(1,1) == "1" then
-      goto continue
+    -- Validate area code and central office code
+    -- start with digits 2 through 9
+    if not digits:match("^[2-9]%d%d[2-9]%d%d%d%d%d%d$") then
+        goto continue
     end
 
-    -- Step 3: Format as NNN.NNN.NNNN
+    -- Validate central office code is not X11
+    if not digits:sub(5,6) == "11" then
+        goto continue
+    end
+
+    -- Format as NNN.NNN.NNNN
     local formatted = digits:sub(1,3) .. "." .. digits:sub(4,6) .. "." .. digits:sub(7)
     table.insert(tns, formatted)
 
