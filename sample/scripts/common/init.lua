@@ -23,6 +23,19 @@ function M.parse_meta(html)
   return metas
 end
 
+-- extract all URLs
+function M.parse_urls(html)
+  local urls  = {}
+  local seen  = {}
+  for url in html:gmatch('[\'"](https?://[^\'"]+)[\'"]') do
+    if not seen[url] then
+      seen[url] = true
+      table.insert(urls, url)
+    end
+  end
+  return urls
+end
+
 -- extract all North American telephone numbers from a string
 function M.parse_tns(html)
   local tns = {}
@@ -36,6 +49,11 @@ function M.parse_tns(html)
     -- Validate area code and central office code
     -- start with digits 2 through 9
     if not digits:match("^[2-9]%d%d[2-9]%d%d%d%d%d%d$") then
+        goto continue
+    end
+
+    -- Skip 555 numbers
+    if not digits:sub(4,6) == "555" then
         goto continue
     end
 
