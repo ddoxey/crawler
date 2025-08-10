@@ -59,6 +59,8 @@ std::optional<nlohmann::json> LuaProcessor::Process(
   const URL& url, const std::string& content) const {
   const auto domain = url.GetDomain();
 
+  last_client_redirect_ = {};
+
   if (domain != domain_) {
     logr::debug << "[LuaProcessor] No scripts for " << domain;
     return std::nullopt;
@@ -89,11 +91,42 @@ std::optional<nlohmann::json> LuaProcessor::Process(
 
   nlohmann::json result_j = LuaTableToJson(sol::table{result});
 
+  auto found = result_j.find("client_redirect");
+  if (found != result_j.end() && found->is_object()) {
+    const auto& cr = *found;
+    last_client_redirect_.url = cr.value("url", std::string{});
+    if (cr.contains("base")) {
+      last_client_redirect_.base = cr.value("base", std::string{});
+    }
+    last_client_redirect_.delay = 0;
+    if (cr.contains("delay")) {
+      if (cr["delay"].is_number_integer()) {
+        last_client_redirect_.delay = cr["delay"].get<int>();
+      } else if (cr["delay"].is_number_float()) {
+        last_client_redirect_.delay =
+          static_cast<int>(cr["delay"].get<double>() + 0.5);
+      } else if (cr["delay"].is_string()) {
+        try {
+          last_client_redirect_.delay =
+            std::stoi(cr["delay"].get<std::string>());
+        } catch (...) {
+        }
+      }
+    }
+  }
+
   IF_DEBUG {
-    logr::debug << result_j.dump(2);
+    logr::debug << "lua result => " << result_j.dump(2);
   }
 
   return {result_j};
+}
+
+std::optional<LuaProcessor::ClientRedirect> LuaProcessor::GetClientRedirect()
+  const {
+  if (last_client_redirect_.url.empty())
+    return {};
+  return {last_client_redirect_};
 }
 
 bool is_array_like(const sol::table& tbl) {

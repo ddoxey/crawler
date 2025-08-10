@@ -12,6 +12,12 @@
 
 class LuaProcessor {
  public:
+  struct ClientRedirect {
+    std::string url;
+    std::optional<std::string> base;
+    size_t delay;
+  };
+
   explicit LuaProcessor(const std::filesystem::path& scripts_dir,
                         const URL& domain);
 
@@ -29,6 +35,8 @@ class LuaProcessor {
   std::optional<nlohmann::json> Process(const URL& url,
                                         const std::string& content) const;
 
+  std::optional<ClientRedirect> GetClientRedirect() const;
+
  private:
   void InitLua();  // opens libs
   std::optional<std::filesystem::path> FindScript() const;
@@ -42,4 +50,5 @@ class LuaProcessor {
   sol::state lua_;
   sol::environment env_;
   sol::protected_function func_;
+  mutable ClientRedirect last_client_redirect_;
 };
