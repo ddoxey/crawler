@@ -77,6 +77,27 @@ void HttpResponse::SetStatusCode(long http_status) {
   headers_.emplace_back("X-HTTP-Status", std::to_string(status_code_));
 }
 
+void HttpResponse::SetRedirectCount(long count) {
+  redirect_count_ = count;
+  headers_.emplace_back("X-Redirect-Count", std::to_string(redirect_count_));
+}
+
+/// Set the effective URL (after any redirects)
+void HttpResponse::SetEffectiveUrl(const std::string url) {
+  effective_url_ = std::make_unique<URL>(url);
+  headers_.emplace_back("X-Effective-URL", effective_url_->ToString());
+}
+
+/// Get the number of redirects
+long HttpResponse::GetRedirectCount() const {
+  return redirect_count_;
+}
+
+/// Get the effective URL
+const URL& HttpResponse::GetEffectiveUrl() const {
+  return *effective_url_.get();
+}
+
 const bool HttpResponse::IsOkay() const {
   return status_code_ >= 200 && status_code_ < 300;
 }

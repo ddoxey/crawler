@@ -1,6 +1,7 @@
 #include "Crawler.hpp"
 #include "Logger.hpp"
-
+#include <chrono>
+#include <thread>
 #include <curl/curl.h>
 #include <iostream>
 
@@ -27,25 +28,28 @@ void Crawler::Crawl() {
           content.reset();
           content = response->GetBody();
           cache_.Store(url, *response);
-        } else if (response->IsRedirect()) {
-          auto location = response->GetHeader("Location");
-          if (location.has_value()) {
-            cache_.Store(url, *response);
-            logr::info << "REDIRECT: " << *location;
-            url = *location;
-            continue;
-          }
-          logr::debug << "BAD REDIRECT";
-          break;
         }
       }
       if (content.has_value()) {
         if (auto result = luap_.Process(url, *content); result.has_value()) {
           cache_.Store(url, *result);
+
+          auto redirect = luap_.GetClientRedirect();
+
+          if (redirect.has_value()) {
+            url = redirect->base.has_value()
+                    ? URL(*redirect->base).resolve(redirect->url)
+                    : url.resolve(redirect->url);
+            if (redirect->delay > 0) {
+              std::this_thread::sleep_for(
+                std::chrono::seconds(redirect->delay));
+            }
+            continue;
+          }
+          break;
         }
-        break;
+        logr::debug;
       }
-      logr::debug;
     }
   }
 }
@@ -58,13 +62,34 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
     return std::nullopt;
   }
 
-  HttpResponse resp;
+  // A sensible User-Agent helps with some sites
+  curl_easy_setopt(curl, CURLOPT_USERAGENT,
+                   "Crawler/1.0 (+your-site-or-email)");
 
   curl_easy_setopt(curl, CURLOPT_URL, url.ToString().c_str());
 
+  // Follow 3xx redirects automatically
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+  // Cap the redirect chain to avoid loops
+  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
+
+  // Set Referer automatically on redirects (optional)
+  curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1L);
+
+  // Prefer HTTP/2 when available (optional but nice)
+  curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+
+  // Auto-decompress gzip/br (server dependent)
+  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+
+  // Verbosity
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
 
+  // Make sure TLS trust uses your CentOS CA bundle
   curl_easy_setopt(curl, CURLOPT_CAINFO, "/etc/pki/tls/certs/ca-bundle.crt");
+
+  HttpResponse resp;
 
   // Body callback
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteBodyCallback);
@@ -80,6 +105,15 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   long http_code = 0;
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
   resp.SetStatusCode(http_code);
+
+  long redirect_count = 0;
+  curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+  resp.SetRedirectCount(redirect_count);
+
+  // Final effective URL after following redirects (or the original if none)
+  char* effective_url = nullptr;
+  curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
+  resp.SetEffectiveUrl(effective_url);
 
   curl_easy_cleanup(curl);
 

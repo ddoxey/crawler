@@ -1,6 +1,8 @@
 #pragma once
 
+#include "URL.hpp"
 #include <string>
+#include <memory>
 #include <vector>
 #include <utility>
 #include <optional>
@@ -30,6 +32,18 @@ class HttpResponse {
   /// Set the HTTP status code
   void SetStatusCode(long http_status);
 
+  /// Set the redirect count
+  void SetRedirectCount(long c);
+
+  /// Set the effective URL (after any redirects)
+  void SetEffectiveUrl(const std::string url);
+
+  /// Get the number of redirects
+  long GetRedirectCount() const;
+
+  /// Get the effective URL
+  const URL& GetEffectiveUrl() const;
+
   /// HTTP status code is 200 to 299
   const bool IsOkay() const;
 
@@ -40,4 +54,6 @@ class HttpResponse {
   std::vector<std::pair<std::string, std::string>> headers_;
   std::string body_;
   long status_code_{0};
+  long redirect_count_{0};
+  std::unique_ptr<URL> effective_url_;
 };
