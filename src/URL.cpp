@@ -1,29 +1,72 @@
 #include "URL.hpp"
 #include "Logger.hpp"
 
-#include <regex>
+#include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <openssl/sha.h>
-#include <algorithm>
+#include <regex>
 #include <sstream>
-#include <iomanip>
+#include <unordered_set>
 
-URL::URL(const std::string& urlString) : rawUrl_(urlString) {
-  Parse();
+namespace {
+// Minimal seed; you can extend or load from file at startup.
+// Keep them lowercase and left-normalized.
+const std::unordered_set<std::string> kMultiLabelPublicSuffixes = {
+  "co.uk",  "ac.uk",  "gov.uk", "org.uk",  "sch.uk", "com.au", "net.au",
+  "org.au", "edu.au", "gov.au", "co.jp",   "ne.jp",  "or.jp",  "ac.jp",
+  "go.jp",  "co.nz",  "org.nz", "govt.nz", "ac.nz",  "com.br", "net.br",
+  "org.br", "gov.br", "com.cn", "net.cn",  "org.cn", "gov.cn"};
+
+inline bool is_ipv6_literal(const std::string& host) {
+  return !host.empty() && host.front() == '[' && host.back() == ']';
 }
 
-URL& URL::operator=(const std::string& urlString) {
-  if (urlString.find("://") != std::string::npos) {
-    // absolute URL: assign and reparse directly
-    rawUrl_ = urlString;
-    queryParams_.reset();
-    Parse();
-  } else {
-    // relative URL: resolve against current, then assign via copy‐assign
-    URL resolved = this->resolve(urlString);
-    *this = resolved;  // invokes the default URL& operator=(const URL&)
+inline bool is_ipv4(const std::string& host) {
+  // very light check – enough to avoid “dot-splitting” names that are actually
+  // IPv4
+  unsigned a, b, c, d;
+  char dot;
+  std::stringstream ss(host);
+  return (ss >> a >> dot >> b >> dot >> c >> dot >> d) && dot == '.';
+}
+
+std::vector<std::string> split_labels(const std::string& host_lc) {
+  std::vector<std::string> out;
+  size_t start = 0;
+  while (true) {
+    auto dot = host_lc.find('.', start);
+    out.emplace_back(host_lc.substr(
+      start, dot == std::string::npos ? std::string::npos : dot - start));
+    if (dot == std::string::npos)
+      break;
+    start = dot + 1;
   }
-  return *this;
+  return out;
+}
+
+// returns length (in labels) of the public suffix: 1 for "com", 2 for "co.uk",
+// etc.
+size_t public_suffix_len(const std::string& host_lc) {
+  // IPv6/IPv4: no label-based TLD semantics
+  if (is_ipv6_literal(host_lc) || is_ipv4(host_lc))
+    return 0;
+
+  // Try multi-label list first
+  // Check "co.uk", "com.au", etc. (suffix matches end of host)
+  for (const auto& ps : kMultiLabelPublicSuffixes) {
+    if (host_lc.size() >= ps.size() &&
+        host_lc.compare(host_lc.size() - ps.size(), ps.size(), ps) == 0) {
+      // Ensure whole-label match: char before must be '.'
+      if (host_lc.size() == ps.size() ||
+          host_lc[host_lc.size() - ps.size() - 1] == '.')
+        return std::count(ps.begin(), ps.end(), '.') + 1;
+    }
+  }
+
+  // Fallback: last label is the TLD (".com", ".org", …)
+  auto labels = split_labels(host_lc);
+  return labels.size() >= 1 ? 1 : 0;
 }
 
 // helper: join and normalize “/a/b/../c” → “/a/c”
@@ -50,6 +93,25 @@ static std::string normalize_path(const std::string& raw) {
       out += "/";
   }
   return out;
+}
+}  // namespace
+
+URL::URL(const std::string& urlString) : rawUrl_(urlString) {
+  Parse();
+}
+
+URL& URL::operator=(const std::string& urlString) {
+  if (urlString.find("://") != std::string::npos) {
+    // absolute URL: assign and reparse directly
+    rawUrl_ = urlString;
+    queryParams_.reset();
+    Parse();
+  } else {
+    // relative URL: resolve against current, then assign via copy‐assign
+    URL resolved = this->resolve(urlString);
+    *this = resolved;  // invokes the default URL& operator=(const URL&)
+  }
+  return *this;
 }
 
 URL URL::resolve(const std::string& ref) const {
@@ -168,15 +230,84 @@ void URL::ParseQueryParams() const {
 std::string URL::GetScheme() const {
   return scheme_;
 }
+
 std::string URL::GetHost() const {
   return host_;
 }
+
 URL URL::GetDomain() const {
-  std::string domain_name{host_};
-  std::transform(domain_name.begin(), domain_name.end(), domain_name.begin(),
-                 ::tolower);
-  return URL(domain_name);
+  auto domain = GetRegistrableDomain();
+  return URL(domain);
 }
+
+std::string URL::GetPublicSuffix() const {
+  std::string host_lc = host_;
+  std::transform(host_lc.begin(), host_lc.end(), host_lc.begin(), ::tolower);
+  if (is_ipv6_literal(host_lc) || is_ipv4(host_lc))
+    return "";
+  auto labels = split_labels(host_lc);
+  size_t ps_len = public_suffix_len(host_lc);
+  if (ps_len == 0 || ps_len > labels.size())
+    return "";
+  // Join the last ps_len labels
+  std::string out;
+  for (size_t i = labels.size() - ps_len; i < labels.size(); ++i) {
+    if (!out.empty())
+      out += '.';
+    out += labels[i];
+  }
+  return out;
+}
+
+std::string URL::GetRegistrableDomain() const {
+  std::string host_lc = host_;
+  std::transform(host_lc.begin(), host_lc.end(), host_lc.begin(), ::tolower);
+  if (is_ipv6_literal(host_lc) || is_ipv4(host_lc))
+    return host_lc;  // treat as whole
+  auto labels = split_labels(host_lc);
+  size_t ps_len = public_suffix_len(host_lc);
+  if (ps_len == 0 || labels.size() <= ps_len)
+    return "";  // no registrable part
+  // eTLD+1: one label left of public suffix + the public suffix
+  size_t start = labels.size() - (ps_len + 1);
+  std::string out = labels[start];
+  for (size_t i = start + 1; i < labels.size(); ++i) {
+    out += '.';
+    out += labels[i];
+  }
+  return out;
+}
+
+std::vector<std::string> URL::GetSubdomains() const {
+  std::vector<std::string> result;
+  std::string host_lc = host_;
+  std::transform(host_lc.begin(), host_lc.end(), host_lc.begin(), ::tolower);
+  if (is_ipv6_literal(host_lc) || is_ipv4(host_lc))
+    return result;
+  auto labels = split_labels(host_lc);
+  size_t ps_len = public_suffix_len(host_lc);
+  if (ps_len == 0)
+    return result;
+  // registrable domain consumes 1 + ps_len labels at the end
+  if (labels.size() <= ps_len + 1)
+    return result;
+  result.assign(labels.begin(), labels.end() - (ps_len + 1));  // left→right
+  return result;
+}
+
+std::string URL::GetSecondLevelDomain() const {
+  // the label immediately left of the public suffix
+  std::string host_lc = host_;
+  std::transform(host_lc.begin(), host_lc.end(), host_lc.begin(), ::tolower);
+  if (is_ipv6_literal(host_lc) || is_ipv4(host_lc))
+    return "";
+  auto labels = split_labels(host_lc);
+  size_t ps_len = public_suffix_len(host_lc);
+  if (ps_len == 0 || labels.size() <= ps_len)
+    return "";
+  return labels[labels.size() - (ps_len + 1)];
+}
+
 std::string URL::GetPath() const {
   return path_;
 }
@@ -303,4 +434,11 @@ std::string URL::GetSha256() const {
     sha256_ = oss.str();
   }
   return sha256_;
+}
+
+bool URL::HostIsIPv4() const {
+  return is_ipv4(host_);
+}
+bool URL::HostIsIPv6() const {
+  return is_ipv6_literal(host_);
 }

@@ -134,3 +134,54 @@ TEST(URLTest, ToStringReflectsChanges) {
   url.SetPath("/newpath");
   EXPECT_EQ(url.ToString(), "https://newdomain.org/newpath?foo=bar");
 }
+
+TEST(URLTest, SimpleCom) {
+  URL url("https://a.b.example.com/path");
+  EXPECT_EQ(url.GetPublicSuffix(), "com");
+  EXPECT_EQ(url.GetSecondLevelDomain(), "example");
+  EXPECT_EQ(url.GetRegistrableDomain(), "example.com");
+  auto subs = url.GetSubdomains();
+  ASSERT_EQ(subs.size(), 2);
+  EXPECT_EQ(subs[0], "a");
+  EXPECT_EQ(subs[1], "b");
+}
+
+TEST(URLTest, UKPublicSuffix) {
+  URL url("https://sub.example.co.uk/");
+  EXPECT_EQ(url.GetPublicSuffix(), "co.uk");
+  EXPECT_EQ(url.GetSecondLevelDomain(), "example");
+  EXPECT_EQ(url.GetRegistrableDomain(), "example.co.uk");
+  auto subs = url.GetSubdomains();
+  ASSERT_EQ(subs.size(), 1);
+  EXPECT_EQ(subs[0], "sub");
+}
+
+TEST(URLTest, AUAndDeepSubs) {
+  URL url("https://x.y.z.company.com.au/");
+  EXPECT_EQ(url.GetPublicSuffix(), "com.au");
+  EXPECT_EQ(url.GetSecondLevelDomain(), "company");
+  EXPECT_EQ(url.GetRegistrableDomain(), "company.com.au");
+  auto subs = url.GetSubdomains();
+  std::vector<std::string> expected{"x", "y", "z"};
+  EXPECT_EQ(subs, expected);
+}
+
+TEST(URLTest, IPv4AndIPv6) {
+  URL v4("http://127.0.0.1/path");
+  EXPECT_TRUE(v4.HostIsIPv4());
+  EXPECT_FALSE(v4.HostIsIPv6());
+  EXPECT_EQ(v4.GetPublicSuffix(), "");
+  EXPECT_EQ(v4.GetRegistrableDomain(), "127.0.0.1");
+
+  URL v6("http://[2001:db8::1]/");
+  EXPECT_FALSE(v6.HostIsIPv4());
+  EXPECT_TRUE(v6.HostIsIPv6());
+  EXPECT_EQ(v6.GetPublicSuffix(), "");
+  EXPECT_EQ(v6.GetRegistrableDomain(), "[2001:db8::1]");
+}
+
+TEST(URLTest, MixedCaseHost) {
+  URL url("https://SuB.ExAmPlE.CoM/");
+  EXPECT_EQ(url.GetPublicSuffix(), "com");
+  EXPECT_EQ(url.GetRegistrableDomain(), "example.com");
+}

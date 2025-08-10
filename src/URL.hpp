@@ -15,6 +15,14 @@ class URL {
   std::string GetScheme() const;
   std::string GetHost() const;
   URL GetDomain() const;
+  std::string GetPublicSuffix() const;  // e.g. "com", "co.uk"
+  std::string GetRegistrableDomain()
+    const;  // eTLD+1, e.g. "example.com", "example.co.uk"
+  std::vector<std::string> GetSubdomains()
+    const;  // ["a","b"] for a.b.example.com (left→right)
+  std::string GetSecondLevelDomain()
+    const;  // "example" (empty if not applicable)
+
   std::string GetPath() const;
   std::string GetQuery() const;
   std::optional<std::vector<std::optional<std::string>>> GetQueryParam(
@@ -32,6 +40,8 @@ class URL {
 
   std::string ToString() const;
   std::string GetSha256() const;
+  bool HostIsIPv4() const;
+  bool HostIsIPv6() const;
 
   // Equality‐operator: two URLs are “equal” if their canonical string forms
   // match
