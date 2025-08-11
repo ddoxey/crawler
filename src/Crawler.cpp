@@ -6,8 +6,8 @@
 #include <iostream>
 
 Crawler::Crawler(const std::set<URL>& batch, CacheManager& cache,
-                 LuaProcessor& luap)
-    : urls_{batch}, cache_{cache}, luap_{luap} {
+                 LuaProcessor& luap, URLManager& urlm)
+    : urls_{batch}, cache_{cache}, luap_{luap}, urlm_{urlm} {
 }
 
 void Crawler::Crawl() {
@@ -34,12 +34,27 @@ void Crawler::Crawl() {
         if (auto result = luap_.Process(url, *content); result.has_value()) {
           cache_.Store(url, *result);
 
+          if (auto it = result->find("urls");
+              it != result->end() && it->is_array()) {
+            std::unordered_set<URL> new_urls;
+            new_urls.reserve(it->size());
+            for (const auto& v : *it) {
+              if (v.is_string()) {
+                auto new_url = URL(v.get<std::string>()).Resolve(url);
+                if (new_url.GetDomain() == url.GetDomain()) {
+                  new_urls.insert(std::move(new_url));
+                }
+              }
+            }
+            urlm_.Store(url.GetDomain(), new_urls);
+          }
+
           auto redirect = luap_.GetClientRedirect();
 
           if (redirect.has_value()) {
             url = redirect->base.has_value()
-                    ? URL(*redirect->base).resolve(redirect->url)
-                    : url.resolve(redirect->url);
+                    ? URL(*redirect->base).Resolve(redirect->url)
+                    : url.Resolve(redirect->url);
             if (redirect->delay > 0) {
               std::this_thread::sleep_for(
                 std::chrono::seconds(redirect->delay));

@@ -52,12 +52,12 @@ int main(int argc, char* argv[]) {
       continue;
     }
 
-    futures.emplace_back(
-      std::async(std::launch::async, [domain, batch, &cache, &conf]() mutable {
+    futures.emplace_back(std::async(
+      std::launch::async, [domain, batch, &cache, &conf, &urlm]() mutable {
         logr::info << domain << " crawler running";
         LuaProcessor luap(conf.GetScriptDir(), domain);
         if (luap.HasScript()) {
-          Crawler crawler(batch, cache, luap);
+          Crawler crawler(batch, cache, luap, urlm);
           crawler.Crawl();
         }
       }));

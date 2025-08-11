@@ -9,7 +9,8 @@ class URL {
   explicit URL(const std::string& url_string);
 
   URL& operator=(const std::string& url_string);
-  URL resolve(const std::string& ref) const;
+  URL Resolve(const URL& ref) const;
+  URL Resolve(const std::string& ref) const;
 
   bool IsValid() const;
   std::string GetScheme() const;

@@ -1,11 +1,12 @@
 #pragma once
 
-#include <set>
-#include <unordered_map>
-#include <vector>
 #include <filesystem>
+#include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include "URL.hpp"
+#include <vector>
 
 class URLManager {
  public:
@@ -16,6 +17,8 @@ class URLManager {
   const std::vector<URL>& GetURLs() const;
 
   std::unordered_map<URL, std::set<URL>> GetBatchesByDomain() const;
+
+  void Store(const URL& domain, const std::unordered_set<URL>& urls) const;
 
  private:
   std::vector<URL> urls_;

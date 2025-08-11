@@ -108,46 +108,66 @@ URL& URL::operator=(const std::string& urlString) {
     Parse();
   } else {
     // relative URL: resolve against current, then assign via copy‐assign
-    URL resolved = this->resolve(urlString);
+    URL resolved = this->Resolve(urlString);
     *this = resolved;  // invokes the default URL& operator=(const URL&)
   }
   return *this;
 }
 
-URL URL::resolve(const std::string& ref) const {
-  // if ref is absolute (has “scheme://”), just construct it
+URL URL::Resolve(const URL& ref) const {
+  return Resolve(ref.ToString());
+}
+
+URL URL::Resolve(const std::string& ref) const {
+  // Absolute: scheme present
   if (ref.find("://") != std::string::npos) {
     return URL(ref);
   }
 
-  // otherwise, it's relative. We need the base’s scheme and host,
-  // and to resolve the path:
-  std::string base = rawUrl_;  // or build from scheme_ + "://" + host_
-  // Find the path portion of the base:
-  auto pos = base.find("://");
-  pos = (pos == std::string::npos) ? 0 : base.find('/', pos + 3);
-  std::string origin = (pos == std::string::npos) ? base : base.substr(0, pos);
-
-  // Decide the new path:
-  std::string newPath;
-  if (!ref.empty() && ref[0] == '/') {
-    // root‑relative
-    newPath = normalize_path(ref);
-  } else {
-    // relative to base path’s directory
-    std::string basePath = "/";
-    if (pos != std::string::npos) {
-      // include everything up to last '/'
-      auto slash = base.find_last_of('/', base.size());
-      if (slash != std::string::npos)
-        basePath = base.substr(pos, slash - pos);
-    }
-    newPath = normalize_path(basePath + "/" + ref);
+  // Protocol-relative: inherit base scheme
+  if (ref.size() >= 2 && ref[0] == '/' && ref[1] == '/') {
+    return URL(scheme_ + ":" + ref);
   }
 
-  // Re‑assemble absolute URL:
-  std::string abs = origin + newPath;
-  return URL(abs);
+  // Split ref into path, query, fragment
+  std::string_view sv = ref;
+  std::string frag, ref_query, ref_path;
+
+  if (auto h = sv.find('#'); h != std::string::npos) {
+    frag.assign(sv.substr(h + 1));
+    sv = sv.substr(0, h);
+  }
+  if (auto q = sv.find('?'); q != std::string::npos) {
+    ref_query.assign(sv.substr(q));  // keep leading '?'
+    ref_path.assign(sv.substr(0, q));
+  } else {
+    ref_path.assign(sv);
+  }
+
+  // Origin from parsed fields (never includes query/fragment)
+  const std::string origin = scheme_.empty() ? "" : (scheme_ + "://" + host_);
+
+  // Compute path
+  std::string path;
+  if (ref_path.empty()) {
+    // Empty relative path inherits the base path
+    path = path_.empty() ? "/" : path_;
+  } else if (ref_path[0] == '/') {
+    path = normalize_path(ref_path);  // absolute path ref
+  } else {
+    // Relative to base directory
+    const std::string base_dir =
+      path_.empty() ? "/" : path_.substr(0, path_.find_last_of('/') + 1);
+    path = normalize_path(base_dir + ref_path);
+  }
+
+  // Query: ref wins; else inherit only when path is empty
+  const std::string query = !ref_query.empty() ? ref_query
+                            : ref_path.empty() ? query_
+                                               : "";
+
+  // Assemble (you can also add a private ctor to skip re-Parse)
+  return URL(origin + path + query + (frag.empty() ? "" : "#" + frag));
 }
 
 void URL::Parse() {

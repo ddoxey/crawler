@@ -5,12 +5,14 @@
 #include <optional>
 #include "URL.hpp"
 #include "CacheManager.hpp"
+#include "URLManager.hpp"
 #include "HttpResponse.hpp"
 #include "LuaProcessor.hpp"
 
 class Crawler {
  public:
-  Crawler(const std::set<URL>& batch, CacheManager& cache, LuaProcessor& luap);
+  Crawler(const std::set<URL>& batch, CacheManager& cache, LuaProcessor& luap,
+          URLManager& urlm);
   void Crawl();
   std::optional<HttpResponse> Fetch(const URL& url);
 
@@ -24,4 +26,5 @@ class Crawler {
   std::set<URL> urls_;
   CacheManager& cache_;
   LuaProcessor& luap_;
+  URLManager& urlm_;
 };
