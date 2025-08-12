@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(crawler
     src/main.cpp
+    src/UAgent.cpp
     src/URL.cpp
     src/URLManager.cpp
     src/Crawler.cpp

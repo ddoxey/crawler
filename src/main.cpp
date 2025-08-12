@@ -5,6 +5,7 @@
 #include "CacheManager.hpp"
 #include "Config.hpp"
 #include "Crawler.hpp"
+#include "Gate.hpp"
 #include "Logger.hpp"
 #include "LuaProcessor.hpp"
 #include "URLManager.hpp"
@@ -44,26 +45,55 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  // concurrency cap (can make this a Config option later)
+  const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+  Gate gate(hw);
+
   std::vector<std::future<void>> futures;
   futures.reserve(batches.size());
 
   for (auto& [domain, batch] : batches) {
-    if (!allowed.empty() && !allowed.count(domain)) {
+    if (!allowed.empty() && !allowed.count(domain))
       continue;
-    }
 
-    futures.emplace_back(std::async(
-      std::launch::async, [domain, batch, &cache, &conf, &urlm]() mutable {
-        logr::info << domain << " crawler running";
-        LuaProcessor luap(conf.GetScriptDir(), domain);
-        if (luap.HasScript()) {
-          Crawler crawler(batch, cache, luap, urlm);
+    gate.acquire();  // throttle
+
+    // move the batch into the task to avoid copying
+    futures.emplace_back(
+      std::async(std::launch::async, [dom = domain, bat = std::move(batch),
+                                      &cache, &conf, &urlm, &gate]() mutable {
+        // RAII release to ensure the permit is returned even on exceptions
+        struct Release {
+          Gate& g;
+          ~Release() {
+            g.release();
+          }
+        } _{gate};
+
+        try {
+          logr::info << "Crawler starting: " << dom;
+
+          LuaProcessor luap(conf.GetScriptDir(), dom);
+          if (!luap.HasScript()) {
+            logr::warning << "No Lua script for " << dom;
+            return;
+          }
+
+          Crawler crawler(bat, conf.GetRateLimit(dom), conf.GetUserUAgentList(),
+                          cache, luap, urlm);
           crawler.Crawl();
+
+          logr::info << "Crawler finished: " << dom;
+
+        } catch (const std::exception& e) {
+          logr::error << "Crawler for " << dom << " failed: " << e.what();
+        } catch (...) {
+          logr::error << "Crawler for " << dom << " failed with unknown error";
         }
       }));
   }
 
-  // block until all done
+  // Wait for all crawlers
   for (auto& f : futures)
     f.get();
 

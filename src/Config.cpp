@@ -50,7 +50,9 @@ Config::Config(const std::filesystem::path& config_file)
     //   "plugins_dir": "/opt/crawler/plugins",
     //   "data_dir": "/var/lib/crawler/data",
     //   "output_dir": "/var/lib/crawler/out",
-    //   "rate_limit_ms": 500,
+    //   "rate_limit_ms": {
+    //     "example.com": 500
+    //   },
     //   "cache_age_limit_s": 86400
     // }
     //
@@ -58,10 +60,28 @@ Config::Config(const std::filesystem::path& config_file)
     data_dir_ = j.at("data_dir").get<std::string>();
     plugins_dir_ = j.at("plugins_dir").get<std::string>();
     script_dir_ = j.at("script_dir").get<std::string>();
-    rate_limit_ms_ =
-      std::chrono::milliseconds{j.value("rate_limit_ms", 1000LL)};
+    user_agent_list_ = j.at("user_agent_list").get<std::string>();
     cache_age_limit_s_ =
       std::chrono::seconds{j.value("cache_age_limit_s", 86400LL)};
+
+    rate_limit_ms_.clear();
+    const auto& rl = j.at("rate_limit_ms");
+    if (rl.is_object()) {
+      for (const auto& [k, v] : rl.items()) {
+        if (!v.is_number_integer())
+          continue;  // skip bad entries
+        long long ms = v.get<long long>();
+        if (ms <= 0)
+          continue;  // ignore nonsensical values
+
+        std::string key = k;
+        std::transform(key.begin(), key.end(), key.begin(),
+                       ::tolower);  // normalize
+
+        // Expect keys to already be registrable domains (eTLD+1)
+        rate_limit_ms_.emplace(std::move(key), std::chrono::milliseconds{ms});
+      }
+    }
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Error parsing config.json: ") +
                              ex.what());
@@ -88,6 +108,12 @@ std::filesystem::path Config::GetScriptDir() const {
   return script_dir_;
 }
 
-std::chrono::milliseconds Config::GetRateLimit() const {
-  return rate_limit_ms_;
+std::filesystem::path Config::GetUserUAgentList() const {
+  return user_agent_list_;
+}
+
+const std::chrono::milliseconds Config::GetRateLimit(const URL& domain) const {
+  if (rate_limit_ms_.count(domain) == 0)
+    return kDefaultRateLimit;
+  return rate_limit_ms_.at(domain);
 }

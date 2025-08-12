@@ -1,9 +1,13 @@
 #pragma once
 
 #include <filesystem>
+#include <unordered_map>
+#include "URL.hpp"
 
 class Config {
  public:
+  const std::chrono::milliseconds kDefaultRateLimit{500};
+
   Config();
   Config(const std::filesystem::path& conf_file);
 
@@ -19,7 +23,9 @@ class Config {
 
   std::filesystem::path GetScriptDir() const;
 
-  std::chrono::milliseconds GetRateLimit() const;
+  std::filesystem::path GetUserUAgentList() const;
+
+  const std::chrono::milliseconds GetRateLimit(const URL& domain) const;
 
  private:
   std::filesystem::path config_file_;
@@ -28,5 +34,6 @@ class Config {
   std::filesystem::path data_dir_;
   std::filesystem::path plugins_dir_;
   std::filesystem::path script_dir_;
-  std::chrono::milliseconds rate_limit_ms_;
+  std::filesystem::path user_agent_list_;
+  std::unordered_map<URL, std::chrono::milliseconds> rate_limit_ms_;
 };

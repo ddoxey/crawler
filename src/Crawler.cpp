@@ -1,13 +1,25 @@
 #include "Crawler.hpp"
 #include "Logger.hpp"
+#include "UAgent.hpp"
+
+#include <algorithm>
 #include <chrono>
-#include <thread>
 #include <curl/curl.h>
 #include <iostream>
+#include <thread>
+#include <thread>
 
-Crawler::Crawler(const std::set<URL>& batch, CacheManager& cache,
-                 LuaProcessor& luap, URLManager& urlm)
-    : urls_{batch}, cache_{cache}, luap_{luap}, urlm_{urlm} {
+Crawler::Crawler(const std::set<URL>& batch,
+                 const std::chrono::milliseconds& rate_limit,
+                 const std::filesystem::path& user_agent_list,
+                 CacheManager& cache, LuaProcessor& luap, URLManager& urlm)
+    : urls_{batch},
+      rate_limit_{rate_limit},
+      agent_{user_agent_list},
+      cache_{cache},
+      luap_{luap},
+      urlm_{urlm} {
+  next_allowed_ = std::chrono::steady_clock::now();
 }
 
 void Crawler::Crawl() {
@@ -70,6 +82,8 @@ void Crawler::Crawl() {
 }
 
 std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
+  Dwell();
+
   CURL* curl = curl_easy_init();
 
   if (!curl) {
@@ -77,9 +91,8 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
     return std::nullopt;
   }
 
-  // A sensible User-Agent helps with some sites
-  curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                   "Crawler/1.0 (+your-site-or-email)");
+  // A sensible User-UAgent helps with some sites
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, agent_.String());
 
   curl_easy_setopt(curl, CURLOPT_URL, url.ToString().c_str());
 
@@ -138,6 +151,22 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   }
 
   return resp;
+}
+
+void Crawler::Dwell() {
+  if (rate_limit_.count() <= 0)
+    return;  // disabled
+
+  using clock = std::chrono::steady_clock;
+
+  auto now = clock::now();
+  if (now < next_allowed_) {
+    std::this_thread::sleep_until(next_allowed_);
+    now = clock::now();
+  }
+
+  // Reserve the next slot. max(..) avoids bunching if we were behind.
+  next_allowed_ = std::max(now, next_allowed_) + rate_limit_;
 }
 
 size_t Crawler::WriteBodyCallback(char* ptr, size_t size, size_t nmemb,
