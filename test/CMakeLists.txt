@@ -10,6 +10,7 @@ enable_testing()
 include(GoogleTest)
 
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(LUA REQUIRED lua)
 
@@ -54,6 +55,27 @@ target_link_libraries(test_luaprocessor
     stdc++fs
 )
 
+# ----------------- Cert tests -----------------
+add_executable(test_cert
+    test_cert.cpp
+    "${PROJECT_SOURCE_DIR}/src/Cert.cpp"
+)
+target_include_directories(test_cert
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/src"
+)
+target_link_libraries(test_cert
+  PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+    ${CURL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    pthread
+    stdc++fs
+)
+
 # Register tests (call once per target)
 gtest_discover_tests(test_url)
 gtest_discover_tests(test_luaprocessor)
+gtest_discover_tests(test_cert)
+
