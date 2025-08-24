@@ -49,7 +49,9 @@ Config::Config(const std::filesystem::path& config_file)
     //   "cache_dir": "/home/user/.cache/crawler/cache",
     //   "plugins_dir": "/opt/crawler/plugins",
     //   "data_dir": "/var/lib/crawler/data",
+    //   "user_agent_list": "/var/lib/crawler/user_agent.list",
     //   "output_dir": "/var/lib/crawler/out",
+    //   "pem_dir": "/var/lib/crawler/pem",
     //   "rate_limit_ms": {
     //     "example.com": 500
     //   },
@@ -60,6 +62,7 @@ Config::Config(const std::filesystem::path& config_file)
     data_dir_ = j.at("data_dir").get<std::string>();
     plugins_dir_ = j.at("plugins_dir").get<std::string>();
     script_dir_ = j.at("script_dir").get<std::string>();
+    pem_dir_ = j.at("pem_dir").get<std::string>();
     user_agent_list_ = j.at("user_agent_list").get<std::string>();
     cache_age_limit_s_ =
       std::chrono::seconds{j.value("cache_age_limit_s", 86400LL)};
@@ -106,6 +109,10 @@ std::filesystem::path Config::GetPluginsDir() const {
 
 std::filesystem::path Config::GetScriptDir() const {
   return script_dir_;
+}
+
+std::filesystem::path Config::GetPemDir() const {
+  return pem_dir_;
 }
 
 std::filesystem::path Config::GetUserUAgentList() const {

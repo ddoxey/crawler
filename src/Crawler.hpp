@@ -7,6 +7,8 @@
 
 #include "UAgent.hpp"
 #include "URL.hpp"
+#include "Cert.hpp"
+#include "Config.hpp"
 #include "CacheManager.hpp"
 #include "URLManager.hpp"
 #include "HttpResponse.hpp"
@@ -14,10 +16,8 @@
 
 class Crawler {
  public:
-  Crawler(const std::set<URL>& batch,
-          const std::chrono::milliseconds& rate_limit,
-          const std::filesystem::path& user_agent_list, CacheManager& cache,
-          LuaProcessor& luap, URLManager& urlm);
+  Crawler(const std::set<URL>& batch, const URL& dom, Config& conf,
+          CacheManager& cache, LuaProcessor& luap, URLManager& urlm);
   void Crawl();
   std::optional<HttpResponse> Fetch(const URL& url);
 
@@ -35,5 +35,6 @@ class Crawler {
   CacheManager& cache_;
   LuaProcessor& luap_;
   URLManager& urlm_;
+  Cert cert_;
   std::chrono::steady_clock::time_point next_allowed_;
 };

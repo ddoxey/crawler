@@ -79,8 +79,7 @@ int main(int argc, char* argv[]) {
             return;
           }
 
-          Crawler crawler(bat, conf.GetRateLimit(dom), conf.GetUserUAgentList(),
-                          cache, luap, urlm);
+          Crawler crawler(bat, dom, conf, cache, luap, urlm);
           crawler.Crawl();
 
           logr::info << "Crawler finished: " << dom;

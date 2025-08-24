@@ -9,16 +9,15 @@
 #include <thread>
 #include <thread>
 
-Crawler::Crawler(const std::set<URL>& batch,
-                 const std::chrono::milliseconds& rate_limit,
-                 const std::filesystem::path& user_agent_list,
+Crawler::Crawler(const std::set<URL>& batch, const URL& dom, Config& conf,
                  CacheManager& cache, LuaProcessor& luap, URLManager& urlm)
     : urls_{batch},
-      rate_limit_{rate_limit},
-      agent_{user_agent_list},
+      rate_limit_{conf.GetRateLimit(dom)},
+      agent_{conf.GetUserUAgentList()},
       cache_{cache},
       luap_{luap},
-      urlm_{urlm} {
+      urlm_{urlm},
+      cert_{conf.GetPemDir()} {
   next_allowed_ = std::chrono::steady_clock::now();
 }
 
@@ -91,10 +90,19 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
     return std::nullopt;
   }
 
-  // A sensible User-UAgent helps with some sites
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, agent_.String());
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);  // thread-safe timeouts on *nix
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 45000L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+  curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 60L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 60L);
 
-  curl_easy_setopt(curl, CURLOPT_URL, url.ToString().c_str());
+  // A sensible User-UAgent helps with some sites
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, agent_.c_str());
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
 
   // Follow 3xx redirects automatically
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -115,38 +123,73 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
 
   // Make sure TLS trust uses your CentOS CA bundle
-  curl_easy_setopt(curl, CURLOPT_CAINFO, "/etc/pki/tls/certs/ca-bundle.crt");
+  curl_easy_setopt(curl, CURLOPT_CAINFO, cert_.GetBaseCaPath().c_str());
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
   HttpResponse resp;
 
-  // Body callback
+  // Body & Header callbacks
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteBodyCallback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-
-  // Header callback
   curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, WriteHeaderCallback);
   curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp);
+
+  // Error buffer
+  char errbuf[CURL_ERROR_SIZE] = {0};
+  curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
   // Perform the request
   CURLcode code = curl_easy_perform(curl);
 
-  long http_code = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-  resp.SetStatusCode(http_code);
+  if (code == CURLE_HTTP2_STREAM || code == CURLE_HTTP2 ||
+      code == CURLE_PARTIAL_FILE) {
+    logr::warning << "[Crawler] HTTP 2.0 error; retry HTTP 1.1 for: "
+                  << url.GetDomain();
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    code = curl_easy_perform(curl);
+  } else if (code == CURLE_PEER_FAILED_VERIFICATION ||
+             (errbuf[0] &&
+              std::strstr(errbuf, "unable to get local issuer certificate"))) {
+    logr::warning << "[Crawler] Attempt fetch of intermediate certs for: "
+                  << url.GetDomain();
 
-  long redirect_count = 0;
-  curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
-  resp.SetRedirectCount(redirect_count);
+    TempPem hold;  // if we create a temp bundle, this keeps it alive until the
+                   // retry returns
+    if (cert_.AugmentWithIntermediates(curl, url.ToString(), hold)) {
+      logr::info << "SUCCESS";
+      // Re-enable strict verify (AugmentWithIntermediates uses a separate
+      // probe)
+      curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+      curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+      code = curl_easy_perform(curl);
+    } else {
+      logr::error << "FAIL";
+    }
+  }
 
-  // Final effective URL after following redirects (or the original if none)
-  char* effective_url = nullptr;
-  curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
-  resp.SetEffectiveUrl(effective_url);
+  // Get response meta data
+  {
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    resp.SetStatusCode(http_code);
+
+    long redirect_count = 0;
+    curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+    resp.SetRedirectCount(redirect_count);
+
+    char* effective_url = nullptr;
+    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url);
+    resp.SetEffectiveUrl(effective_url);
+  }
 
   curl_easy_cleanup(curl);
 
   if (code != CURLE_OK) {
+    logr::warning << "[Crawler] URL error: " << url;
     logr::warning << "[Crawler] CURL error: " << curl_easy_strerror(code);
+    if (errbuf[0])
+      logr::warning << "[Crawler] detail: " << errbuf;
     return std::nullopt;
   }
 

@@ -58,11 +58,10 @@ UAgent::UAgent(const std::filesystem::path& list_path)
     throw runtime_error("UAgent: no user-agent strings loaded from: " +
                         list_path.string());
   }
-
-  dist_ = std::uniform_int_distribution<std::size_t>(0, uas_.size() - 1);
 }
 
-std::string_view UAgent::String() const {
-  const std::size_t i = dist_(rng_);
-  return std::string_view{uas_[i]};
+const char* UAgent::c_str() const {
+  std::uniform_int_distribution<std::size_t> dist(0, uas_.size() - 1);
+  const std::size_t i = dist(rng_);
+  return uas_[i].c_str();
 }

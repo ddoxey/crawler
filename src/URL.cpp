@@ -373,50 +373,62 @@ std::optional<std::vector<std::optional<std::string>>> URL::GetQueryParam(
   return {values};
 }
 
+const char* URL::c_str() const {
+  ToString();
+  return url_.c_str();
+}
+
 std::string URL::ToString() const {
-  std::string url;
-
-  if (!scheme_.empty()) {
-    url += scheme_;
-    url += "://";
-  }
-
-  url += host_;
-
-  if (!path_.empty()) {
-    // Make sure the path starts with '/' unless it's empty
-    if (path_[0] != '/') {
-      url += '/';
+  if (url_.empty()) {
+    std::string url;
+    if (!scheme_.empty()) {
+      url += scheme_;
+      url += "://";
     }
-    url += path_;
+
+    url += host_;
+
+    if (!path_.empty()) {
+      // Make sure the path starts with '/' unless it's empty
+      if (path_[0] != '/') {
+        url += '/';
+      }
+      url += path_;
+    }
+
+    url +=
+      GetQuery();  // Will compose from queryParams if parsed, else raw query
+
+    if (!fragment_.empty()) {
+      url += '#';
+      url += fragment_;
+    }
+    url_.swap(url);
   }
-
-  url += GetQuery();  // Will compose from queryParams if parsed, else raw query
-
-  if (!fragment_.empty()) {
-    url += '#';
-    url += fragment_;
-  }
-
-  return url;
+  return url_;
 }
 
 void URL::SetScheme(const std::string& s) {
+  url_.clear();
   scheme_ = s;
 }
 void URL::SetHost(const std::string& h) {
+  url_.clear();
   host_ = h;
 }
 void URL::SetPath(const std::string& p) {
+  url_.clear();
   path_ = p;
 }
 void URL::SetQuery(const std::string& q) {
+  url_.clear();
   query_ = q;
   queryParams_.reset();
 }
 
 void URL::SetQueryParam(const std::string& key,
                         std::optional<std::string> value) {
+  url_.clear();
   ParseQueryParams();
   auto& vec = *queryParams_;
 
@@ -439,6 +451,7 @@ void URL::AppendQueryParam(const std::string& key,
 }
 
 void URL::SetFragment(const std::string& f) {
+  url_.clear();
   fragment_ = f;
 }
 

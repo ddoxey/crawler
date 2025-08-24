@@ -23,6 +23,8 @@ class Config {
 
   std::filesystem::path GetScriptDir() const;
 
+  std::filesystem::path GetPemDir() const;
+
   std::filesystem::path GetUserUAgentList() const;
 
   const std::chrono::milliseconds GetRateLimit(const URL& domain) const;
@@ -34,6 +36,7 @@ class Config {
   std::filesystem::path data_dir_;
   std::filesystem::path plugins_dir_;
   std::filesystem::path script_dir_;
+  std::filesystem::path pem_dir_;
   std::filesystem::path user_agent_list_;
   std::unordered_map<URL, std::chrono::milliseconds> rate_limit_ms_;
 };

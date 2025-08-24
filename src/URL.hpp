@@ -39,6 +39,7 @@ class URL {
                         std::optional<std::string> value = std::nullopt);
   void SetFragment(const std::string& f);
 
+  const char* c_str() const;
   std::string ToString() const;
   std::string GetSha256() const;
   bool HostIsIPv4() const;
@@ -63,6 +64,7 @@ class URL {
   mutable std::optional<
     std::vector<std::pair<std::string, std::optional<std::string>>>>
     queryParams_;
+  mutable std::string url_;
 
   void Parse();
   void ParseQueryParams() const;

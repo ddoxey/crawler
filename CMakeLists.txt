@@ -8,6 +8,7 @@ add_executable(crawler
     src/main.cpp
     src/UAgent.cpp
     src/URL.cpp
+    src/Cert.cpp
     src/URLManager.cpp
     src/Crawler.cpp
     src/CacheManager.cpp
