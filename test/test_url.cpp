@@ -1,7 +1,16 @@
 #include <gtest/gtest.h>
 #include "URL.hpp"
 
+#include <vector>  // for AUAndDeepSubs expected vector
+
 TEST(URLTest, BasicParsing) {
+  SCOPED_TRACE(
+    "Parses scheme, host, path, and query components from a basic HTTP URL.");
+  RecordProperty("description",
+                 "Validates that GetScheme/GetHost/GetPath/GetQuery extract "
+                 "the correct parts "
+                 "from 'http://example.com/path?foo=bar'.");
+
   URL url("http://example.com/path?foo=bar");
 
   EXPECT_EQ(url.GetScheme(), "http");
@@ -11,6 +20,11 @@ TEST(URLTest, BasicParsing) {
 }
 
 TEST(URLTest, MissingPathAndQuery) {
+  SCOPED_TRACE("Handles URLs with no path and no query string.");
+  RecordProperty("description",
+                 "Confirms that path and query are empty when the input is "
+                 "just a scheme and host.");
+
   URL url("https://anotherdomain.org");
 
   EXPECT_EQ(url.GetScheme(), "https");
@@ -20,6 +34,13 @@ TEST(URLTest, MissingPathAndQuery) {
 }
 
 TEST(URLTest, ComplexURL) {
+  SCOPED_TRACE(
+    "Parses a URL with subdomain, multi-segment path, and multiple query "
+    "parameters.");
+  RecordProperty("description",
+                 "Ensures parsing remains correct for a more complex URL "
+                 "including subdomain and multi-parameter query.");
+
   URL url("https://sub.example.com/some/page?x=1&y=2");
 
   EXPECT_EQ(url.GetScheme(), "https");
@@ -29,6 +50,11 @@ TEST(URLTest, ComplexURL) {
 }
 
 TEST(URLTest, SingleParam) {
+  SCOPED_TRACE("Retrieves a single-valued query parameter.");
+  RecordProperty("description",
+                 "Verifies GetQueryParam returns a single element vector "
+                 "containing 'bar' for key 'foo'.");
+
   URL url("http://example.com/page?foo=bar");
 
   auto fooOpt = url.GetQueryParam("foo");
@@ -41,6 +67,11 @@ TEST(URLTest, SingleParam) {
 }
 
 TEST(URLTest, MultipleParams) {
+  SCOPED_TRACE("Retrieves multiple query parameters including an empty value.");
+  RecordProperty("description",
+                 "Validates GetQueryParam for keys 'foo', 'baz', and 'empty', "
+                 "ensuring values are parsed correctly.");
+
   URL url("http://example.com/page?foo=bar&baz=qux&empty=");
 
   auto fooOpt = url.GetQueryParam("foo");
@@ -70,6 +101,11 @@ TEST(URLTest, MultipleParams) {
 }
 
 TEST(URLTest, MissingParam) {
+  SCOPED_TRACE("Returns std::nullopt for query keys that are not present.");
+  RecordProperty("description",
+                 "Ensures GetQueryParam returns an empty optional when the "
+                 "requested key is absent.");
+
   URL url("http://example.com/page?foo=bar");
 
   auto missingOpt = url.GetQueryParam("doesnotexist");
@@ -77,6 +113,11 @@ TEST(URLTest, MissingParam) {
 }
 
 TEST(URLTest, EmptyQueryString) {
+  SCOPED_TRACE("Handles URLs that lack a query string entirely.");
+  RecordProperty("description",
+                 "Confirms GetQueryParam returns std::nullopt when the URL has "
+                 "no '?' component.");
+
   URL url("http://example.com/page");
 
   auto fooOpt = url.GetQueryParam("foo");
@@ -84,6 +125,14 @@ TEST(URLTest, EmptyQueryString) {
 }
 
 TEST(URLTest, NoValueParameter) {
+  SCOPED_TRACE(
+    "Parses a flag-style parameter (no '=value') alongside a normal "
+    "key=value.");
+  RecordProperty("description",
+                 "Validates that a key present without a value yields an "
+                 "element with no value, "
+                 "and a normal parameter still parses correctly.");
+
   // 'flag' present with no '=', 'foo' as normal
   URL url("http://example.com/page?flag&foo=bar");
 
@@ -105,6 +154,11 @@ TEST(URLTest, NoValueParameter) {
 }
 
 TEST(URLTest, DuplicateKeys) {
+  SCOPED_TRACE("Preserves the order and multiplicity of duplicate query keys.");
+  RecordProperty("description",
+                 "Ensures that three occurrences of key 'x' are returned in "
+                 "order: '1', '2', and no value.");
+
   URL url("http://example.com/page?x=1&x=2&x");
 
   auto xOpt = url.GetQueryParam("x");
@@ -120,6 +174,12 @@ TEST(URLTest, DuplicateKeys) {
 }
 
 TEST(URLTest, ToStringReflectsChanges) {
+  SCOPED_TRACE(
+    "Serializes changes to scheme, host, and path back into a URL string.");
+  RecordProperty("description",
+                 "Verifies that ToString reflects SetScheme/SetHost/SetPath "
+                 "updates in sequence.");
+
   URL url("http://example.com/path?foo=bar");
 
   // original
@@ -136,6 +196,14 @@ TEST(URLTest, ToStringReflectsChanges) {
 }
 
 TEST(URLTest, SimpleCom) {
+  SCOPED_TRACE(
+    "Extracts public suffix and registrable domain for a simple '.com' "
+    "hierarchy.");
+  RecordProperty("description",
+                 "Confirms public suffix = 'com', SLD = 'example', registrable "
+                 "domain = 'example.com', "
+                 "and subdomains parsed as ['a','b'].");
+
   URL url("https://a.b.example.com/path");
   EXPECT_EQ(url.GetPublicSuffix(), "com");
   EXPECT_EQ(url.GetSecondLevelDomain(), "example");
@@ -147,6 +215,12 @@ TEST(URLTest, SimpleCom) {
 }
 
 TEST(URLTest, UKPublicSuffix) {
+  SCOPED_TRACE("Handles two-label public suffixes like 'co.uk'.");
+  RecordProperty("description",
+                 "Checks that public suffix = 'co.uk', SLD = 'example', "
+                 "registrable domain = 'example.co.uk', "
+                 "and remaining left label is treated as a subdomain.");
+
   URL url("https://sub.example.co.uk/");
   EXPECT_EQ(url.GetPublicSuffix(), "co.uk");
   EXPECT_EQ(url.GetSecondLevelDomain(), "example");
@@ -157,6 +231,12 @@ TEST(URLTest, UKPublicSuffix) {
 }
 
 TEST(URLTest, AUAndDeepSubs) {
+  SCOPED_TRACE("Parses multi-label public suffixes and deep subdomain chains.");
+  RecordProperty("description",
+                 "Verifies 'com.au' as the public suffix, 'company' as SLD, "
+                 "registrable 'company.com.au', "
+                 "and subdomains ['x','y','z'] in order.");
+
   URL url("https://x.y.z.company.com.au/");
   EXPECT_EQ(url.GetPublicSuffix(), "com.au");
   EXPECT_EQ(url.GetSecondLevelDomain(), "company");
@@ -167,6 +247,12 @@ TEST(URLTest, AUAndDeepSubs) {
 }
 
 TEST(URLTest, IPv4AndIPv6) {
+  SCOPED_TRACE(
+    "Identifies IP literals and suppresses public-suffix parsing for them.");
+  RecordProperty("description",
+                 "Asserts HostIsIPv4/HostIsIPv6 correctness and that "
+                 "registrable domain echoes the host literal.");
+
   URL v4("http://127.0.0.1/path");
   EXPECT_TRUE(v4.HostIsIPv4());
   EXPECT_FALSE(v4.HostIsIPv6());
@@ -181,6 +267,12 @@ TEST(URLTest, IPv4AndIPv6) {
 }
 
 TEST(URLTest, MixedCaseHost) {
+  SCOPED_TRACE(
+    "Normalizes case when computing public-suffix and registrable domain.");
+  RecordProperty("description",
+                 "Ensures that mixed-case hostnames are treated "
+                 "case-insensitively for suffix/domain extraction.");
+
   URL url("https://SuB.ExAmPlE.CoM/");
   EXPECT_EQ(url.GetPublicSuffix(), "com");
   EXPECT_EQ(url.GetRegistrableDomain(), "example.com");

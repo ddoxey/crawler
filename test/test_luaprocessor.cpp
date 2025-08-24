@@ -37,6 +37,12 @@ class LuaProcessorTest : public ::testing::Test {
 };
 
 TEST_F(LuaProcessorTest, LoadsDomainAndParsesTitle) {
+  SCOPED_TRACE(
+    "Parses a basic HTML document and extracts the <title> using the domain’s "
+    "Lua script.");
+  RecordProperty("description",
+                 "Ensures LuaProcessor loads the site script for example.com "
+                 "and returns JSON with title and url.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   ASSERT_TRUE(lp.HasScript());
 
@@ -62,6 +68,12 @@ TEST_F(LuaProcessorTest, LoadsDomainAndParsesTitle) {
 }
 
 TEST_F(LuaProcessorTest, HandlesMissingTitleGracefully) {
+  SCOPED_TRACE(
+    "Handles documents with no <title> element without throwing and returns an "
+    "empty title string.");
+  RecordProperty("description",
+                 "Verifies the script returns a JSON object containing an "
+                 "empty 'title' when no title is present.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/page");
   const std::string html =
@@ -76,6 +88,13 @@ TEST_F(LuaProcessorTest, HandlesMissingTitleGracefully) {
 }
 
 TEST_F(LuaProcessorTest, MetaRefresh_Immediate_WithBaseHref) {
+  SCOPED_TRACE(
+    "Extracts client redirect from a meta refresh with delay=0 and honors "
+    "<base href>.");
+  RecordProperty(
+    "description",
+    "Meta tag 'refresh' with URL=../next should produce client_redirect "
+    "{type=meta, delay=0, url='../next', base=...}.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/start");
   const std::string html = R"(
@@ -104,6 +123,11 @@ TEST_F(LuaProcessorTest, MetaRefresh_Immediate_WithBaseHref) {
 }
 
 TEST_F(LuaProcessorTest, MetaRefresh_Quoted_Uppercase_WithDelay) {
+  SCOPED_TRACE(
+    "Parses REFRESH meta tag with mixed casing, quotes, and a nonzero delay.");
+  RecordProperty("description",
+                 "Expect client_redirect {type=meta, delay=5, "
+                 "url='https://target.example/landing'}.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/x");
   const std::string html = R"(
@@ -129,6 +153,11 @@ TEST_F(LuaProcessorTest, MetaRefresh_Quoted_Uppercase_WithDelay) {
 }
 
 TEST_F(LuaProcessorTest, Js_WindowLocation_Assignment) {
+  SCOPED_TRACE(
+    "Captures JavaScript-driven redirects via 'window.location = ...'.");
+  RecordProperty("description",
+                 "Expect client_redirect {type=js, delay=0, url='/js-next'} "
+                 "from a window.location assignment.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/root");
   const std::string html = R"(
@@ -149,6 +178,12 @@ TEST_F(LuaProcessorTest, Js_WindowLocation_Assignment) {
 }
 
 TEST_F(LuaProcessorTest, Js_LocationHref_And_Replace) {
+  SCOPED_TRACE(
+    "Prefers location.href over location.replace when both are present "
+    "(policy-based).");
+  RecordProperty("description",
+                 "Expects the first matching mechanism to pick "
+                 "'https://example.net/alpha' over '.../beta'.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/a");
   const std::string html = R"(
@@ -171,6 +206,11 @@ TEST_F(LuaProcessorTest, Js_LocationHref_And_Replace) {
 }
 
 TEST_F(LuaProcessorTest, NoClientRedirect_WhenAbsent) {
+  SCOPED_TRACE(
+    "Leaves client_redirect unset/null when no redirect patterns are present.");
+  RecordProperty("description",
+                 "Ensures the script returns either no 'client_redirect' or "
+                 "null for plain pages.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/page");
   const std::string html = R"(
@@ -187,6 +227,10 @@ TEST_F(LuaProcessorTest, NoClientRedirect_WhenAbsent) {
 }
 
 TEST_F(LuaProcessorTest, MetaRefresh_HtmlEntities_InUrl) {
+  SCOPED_TRACE("Decodes HTML entities (e.g., '&amp;') in meta refresh URLs.");
+  RecordProperty("description",
+                 "Ensures '&amp;' is converted to '&' in client_redirect.url "
+                 "for a meta refresh.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   URL url("https://example.com/p");
   const std::string html = R"(
@@ -213,6 +257,11 @@ TEST_F(LuaProcessorTest, MetaRefresh_HtmlEntities_InUrl) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST_F(LuaProcessorTest, Js_LocationAssign_Absolute) {
+  SCOPED_TRACE(
+    "Detects 'location.assign(ABSOLUTE_URL)' and extracts its target.");
+  RecordProperty("description",
+                 "Expect client_redirect.url to equal 'https://e.com/next' "
+                 "from location.assign.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -220,7 +269,6 @@ TEST_F(LuaProcessorTest, Js_LocationAssign_Absolute) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -229,10 +277,13 @@ TEST_F(LuaProcessorTest, Js_LocationAssign_Absolute) {
   auto it = j.find("client_redirect");
   ASSERT_NE(it, j.end());
   EXPECT_EQ((*it)["url"], "https://e.com/next");
-  // EXPECT_EQ((*it)["mechanism"], "js_location_assign");
 }
 
 TEST_F(LuaProcessorTest, Js_WindowLocationHref_Absolute) {
+  SCOPED_TRACE("Detects 'window.location.href = ABSOLUTE_URL'.");
+  RecordProperty("description",
+                 "Expect client_redirect.url to equal 'https://e.com/p1' from "
+                 "window.location.href.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -240,7 +291,6 @@ TEST_F(LuaProcessorTest, Js_WindowLocationHref_Absolute) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -249,10 +299,15 @@ TEST_F(LuaProcessorTest, Js_WindowLocationHref_Absolute) {
   auto it = j.find("client_redirect");
   ASSERT_NE(it, j.end());
   EXPECT_EQ((*it)["url"], "https://e.com/p1");
-  // EXPECT_EQ((*it)["mechanism"], "js_location_href");
 }
 
 TEST_F(LuaProcessorTest, Js_DocumentLocation_Relative_WithBase) {
+  SCOPED_TRACE(
+    "Extracts relative redirect via 'document.location = REL' and surfaces "
+    "<base href> alongside.");
+  RecordProperty("description",
+                 "Expect client_redirect.url='/rel/path' and "
+                 "base_href='https://e.com/base/' when a base tag is present.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html>
@@ -266,7 +321,6 @@ TEST_F(LuaProcessorTest, Js_DocumentLocation_Relative_WithBase) {
     </html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -280,10 +334,14 @@ TEST_F(LuaProcessorTest, Js_DocumentLocation_Relative_WithBase) {
   if (b != j.end() && !b->is_null()) {
     EXPECT_EQ(*b, "https://e.com/base/");
   }
-  // EXPECT_EQ((*it)["mechanism"], "js_document_location");
 }
 
 TEST_F(LuaProcessorTest, Js_TopLocation_WithWhitespaceAndComments) {
+  SCOPED_TRACE(
+    "Handles 'top.location = ...' with arbitrary whitespace and comments.");
+  RecordProperty("description",
+                 "Ensures the extractor is robust against formatting noise and "
+                 "still captures the absolute URL.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -293,7 +351,6 @@ TEST_F(LuaProcessorTest, Js_TopLocation_WithWhitespaceAndComments) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -302,10 +359,15 @@ TEST_F(LuaProcessorTest, Js_TopLocation_WithWhitespaceAndComments) {
   auto it = j.find("client_redirect");
   ASSERT_NE(it, j.end());
   EXPECT_EQ((*it)["url"], "https://e.com/top");
-  // EXPECT_EQ((*it)["mechanism"], "js_top_location");
 }
 
 TEST_F(LuaProcessorTest, Js_LocationAssign_Newlines_And_Tabs) {
+  SCOPED_TRACE(
+    "Parses 'location.assign(...)' even when broken across multiple "
+    "lines/tabs.");
+  RecordProperty("description",
+                 "Confirms the regex/pattern matcher is not "
+                 "whitespace-sensitive for location.assign.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -321,7 +383,6 @@ TEST_F(LuaProcessorTest, Js_LocationAssign_Newlines_And_Tabs) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -333,7 +394,11 @@ TEST_F(LuaProcessorTest, Js_LocationAssign_Newlines_And_Tabs) {
 }
 
 TEST_F(LuaProcessorTest, Js_LocationReplace_Vs_Href_Preference) {
-  // If your policy prefers href over replace(), expect the href URL.
+  SCOPED_TRACE(
+    "When both replace() and href are present, prefers href based on policy.");
+  RecordProperty("description",
+                 "Verifies window.location.href wins over location.replace for "
+                 "the extracted URL.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -344,7 +409,6 @@ TEST_F(LuaProcessorTest, Js_LocationReplace_Vs_Href_Preference) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -356,7 +420,12 @@ TEST_F(LuaProcessorTest, Js_LocationReplace_Vs_Href_Preference) {
 }
 
 TEST_F(LuaProcessorTest, Js_FirstOccurrenceWins_WhenMultipleAssignments) {
-  // Adjust expectation if your policy is "last wins".
+  SCOPED_TRACE(
+    "With multiple assignment forms present, the first match wins (adjust "
+    "expectation if policy differs).");
+  RecordProperty("description",
+                 "Ensures 'window.location = ...' is captured before later "
+                 "assignments if that is the configured policy.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -368,7 +437,6 @@ TEST_F(LuaProcessorTest, Js_FirstOccurrenceWins_WhenMultipleAssignments) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -380,6 +448,12 @@ TEST_F(LuaProcessorTest, Js_FirstOccurrenceWins_WhenMultipleAssignments) {
 }
 
 TEST_F(LuaProcessorTest, Js_WindowLocationHref_SingleQuotes_NoSemicolon) {
+  SCOPED_TRACE(
+    "Handles missing semicolons and single-quoted URLs in window.location.href "
+    "assignments.");
+  RecordProperty("description",
+                 "Confirms resilience to JS style variations; still extracts "
+                 "'https://e.com/no-semi'.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html><head><title>t</title></head><body>
@@ -387,7 +461,6 @@ TEST_F(LuaProcessorTest, Js_WindowLocationHref_SingleQuotes_NoSemicolon) {
     </body></html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
@@ -399,6 +472,13 @@ TEST_F(LuaProcessorTest, Js_WindowLocationHref_SingleQuotes_NoSemicolon) {
 }
 
 TEST_F(LuaProcessorTest, Js_LocationAssign_SingleQuoted_Relative_WithBase) {
+  SCOPED_TRACE(
+    "Captures single-quoted relative targets and returns base_href when a "
+    "<base> tag is present.");
+  RecordProperty(
+    "description",
+    "Expects client_redirect.url='/k/v' and base_href='https://e.com/base/' "
+    "for location.assign with base.");
   LuaProcessor lp(scripts_dir_, URL("example.com"));
   const std::string html = R"HTML(
     <html>
@@ -407,7 +487,6 @@ TEST_F(LuaProcessorTest, Js_LocationAssign_SingleQuoted_Relative_WithBase) {
     </html>
   )HTML";
   URL url("https://example.com/p");
-  SCOPED_TRACE(html);
 
   auto jopt = lp.Process(url, html);
   ASSERT_TRUE(jopt.has_value());
