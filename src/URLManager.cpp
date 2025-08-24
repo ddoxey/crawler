@@ -25,6 +25,9 @@ URLManager::URLManager(const std::filesystem::path& dir) : dir_{dir} {
     if (!entry.is_regular_file()) {
       continue;
     }
+    if (entry.path().extension() != ".list") {
+      continue;
+    }
     logr::info << "FILE: " << entry;
     try {
       LoadFromFile(entry.path());
