@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +43,7 @@ class URL {
 
   const char* c_str() const;
   std::string ToString() const;
+  std::uint64_t GetID() const noexcept;
   std::string GetSha256() const;
   bool HostIsIPv4() const;
   bool HostIsIPv6() const;
@@ -58,13 +61,23 @@ class URL {
   }
 
  private:
-  std::string rawUrl_;
+  struct Properties {
+    std::string url;
+    std::string sha256;
+    std::uint64_t id64;
+    std::optional<
+      std::vector<std::pair<std::string, std::optional<std::string>>>>
+      query;
+    void Clear() {
+      url.clear();
+      sha256.clear();
+      id64 = 0;
+      query.reset();
+    }
+  };
+  std::string raw_url_;
   std::string scheme_, host_, path_, query_, fragment_;
-  mutable std::string sha256_;
-  mutable std::optional<
-    std::vector<std::pair<std::string, std::optional<std::string>>>>
-    queryParams_;
-  mutable std::string url_;
+  mutable Properties props_;
 
   void Parse();
   void ParseQueryParams() const;
@@ -77,13 +90,12 @@ inline std::ostream& operator<<(std::ostream& os, const URL& u) {
   return os;
 }
 
+// allow URL as an unordered_{map,set} key directly.
 namespace std {
-/// std::hash<URL> specialization to support URL in unordered_map/set
 template <>
 struct hash<URL> {
   size_t operator()(const URL& u) const noexcept {
-    // Simple: hash the canonical string form
-    return std::hash<std::string>()(u.ToString());
+    return static_cast<size_t>(u.GetID());
   }
 };
 }  // namespace std

@@ -130,7 +130,8 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
-  // If we have a per-host bundle, this upgrades trust for this host transparently
+  // If we have a per-host bundle, this upgrades trust for this host
+  // transparently
   cert_.ApplyHostBundle(curl, url.GetHost());
 
   HttpResponse resp;
@@ -167,7 +168,8 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
       curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
       code = curl_easy_perform(curl);
     } else {
-      logr::error << "[Crawler] Failed to fetch intermediate certs for: " << url;
+      logr::error << "[Crawler] Failed to fetch intermediate certs for: "
+                  << url;
     }
   }
 

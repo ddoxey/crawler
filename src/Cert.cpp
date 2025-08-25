@@ -388,8 +388,10 @@ std::vector<std::string> Cert::ExtractAiaUrls(const std::string& url) {
 }
 
 bool Cert::RebuildHostBundle(const std::string& host) {
-  if (pem_dir_.empty() || base_ca_path_.empty()) return false;
-  if (!std::filesystem::exists(base_ca_path_))   return false;
+  if (pem_dir_.empty() || base_ca_path_.empty())
+    return false;
+  if (!std::filesystem::exists(base_ca_path_))
+    return false;
 
   std::error_code ec;
   const auto bundle_dir = pem_dir_ / "bundles";
@@ -399,33 +401,41 @@ bool Cert::RebuildHostBundle(const std::string& host) {
 
   // Start with the base bundle
   std::ifstream in(base_ca_path_);
-  if (!in) return false;
+  if (!in)
+    return false;
 
   std::string combined((std::istreambuf_iterator<char>(in)), {});
-  if (combined.empty() || combined.back() != '\n') combined.push_back('\n');
+  if (combined.empty() || combined.back() != '\n')
+    combined.push_back('\n');
 
   // Append any issuer PEMs we previously persisted for this host
   // Pattern: "<host>__<issuer>.pem"
   for (auto const& entry : std::filesystem::directory_iterator(pem_dir_, ec)) {
-    if (ec) break;
-    if (!entry.is_regular_file()) continue;
+    if (ec)
+      break;
+    if (!entry.is_regular_file())
+      continue;
     const auto name = entry.path().filename().string();
 
     // Naive prefix/suffix check (keeps it simple & fast)
     const std::string prefix = host + "__";
     const std::string suffix = ".pem";
-    if (name.rfind(prefix, 0) == 0 && name.size() > prefix.size() + suffix.size() &&
+    if (name.rfind(prefix, 0) == 0 &&
+        name.size() > prefix.size() + suffix.size() &&
         name.substr(name.size() - suffix.size()) == suffix) {
       std::ifstream p(entry.path());
-      if (!p) continue;
+      if (!p)
+        continue;
       combined.append((std::istreambuf_iterator<char>(p)), {});
-      if (combined.empty() || combined.back() != '\n') combined.push_back('\n');
+      if (combined.empty() || combined.back() != '\n')
+        combined.push_back('\n');
     }
   }
 
   // Write out the per-host bundle (idempotent)
   std::ofstream out(bundle_path, std::ios::binary | std::ios::trunc);
-  if (!out) return false;
+  if (!out)
+    return false;
   out.write(combined.data(), static_cast<std::streamsize>(combined.size()));
   out.flush();
 
@@ -444,18 +454,21 @@ bool Cert::ApplyHostBundle(CURL* easy, const std::string& host) const {
       if (f) {
         std::string blob((std::istreambuf_iterator<char>(f)), {});
         if (!blob.empty()) {
-          curl_blob b{ const_cast<char*>(blob.data()), blob.size(), CURL_BLOB_COPY };
+          curl_blob b{const_cast<char*>(blob.data()), blob.size(),
+                      CURL_BLOB_COPY};
           return curl_easy_setopt(easy, CURLOPT_CAINFO_BLOB, &b) == CURLE_OK;
         }
       }
     }
 #endif
-    return curl_easy_setopt(easy, CURLOPT_CAINFO, it->second.c_str()) == CURLE_OK;
+    return curl_easy_setopt(easy, CURLOPT_CAINFO, it->second.c_str()) ==
+           CURLE_OK;
   }
 
   // Try to rebuild (e.g., first time after a new issuer was saved)
-  Cert* self = const_cast<Cert*>(this); // for map update
-  if (!self->RebuildHostBundle(host)) return false;
+  Cert* self = const_cast<Cert*>(this);  // for map update
+  if (!self->RebuildHostBundle(host))
+    return false;
 
   const auto& path = bundle_path_by_host_.at(host);
 
@@ -465,7 +478,8 @@ bool Cert::ApplyHostBundle(CURL* easy, const std::string& host) const {
     if (f) {
       std::string blob((std::istreambuf_iterator<char>(f)), {});
       if (!blob.empty()) {
-        curl_blob b{ const_cast<char*>(blob.data()), blob.size(), CURL_BLOB_COPY };
+        curl_blob b{const_cast<char*>(blob.data()), blob.size(),
+                    CURL_BLOB_COPY};
         return curl_easy_setopt(easy, CURLOPT_CAINFO_BLOB, &b) == CURLE_OK;
       }
     }
@@ -505,7 +519,7 @@ bool Cert::AugmentWithIntermediates(CURL* easy, const std::string& url,
       continue;
 
     const bool already =
-        (issuer_pem_cache_.find(issuer_cn) != issuer_pem_cache_.end());
+      (issuer_pem_cache_.find(issuer_cn) != issuer_pem_cache_.end());
     if (!already)
       issuer_pem_cache_.emplace(issuer_cn, pem);
 
@@ -526,7 +540,8 @@ bool Cert::AugmentWithIntermediates(CURL* easy, const std::string& url,
     if (ApplyHostBundle(easy, domain)) {
       return true;
     }
-    // If applying the host bundle fails, we still fall through and try temp blob.
+    // If applying the host bundle fails, we still fall through and try temp
+    // blob.
   }
 
   // --- EXISTING FALLBACK BEHAVIOR ---

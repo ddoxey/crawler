@@ -2,6 +2,8 @@
 #include "Logger.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <openssl/sha.h>
@@ -96,19 +98,19 @@ static std::string normalize_path(const std::string& raw) {
 }
 }  // namespace
 
-URL::URL(const std::string& urlString) : rawUrl_(urlString) {
+URL::URL(const std::string& url_string) : raw_url_(url_string) {
   Parse();
 }
 
-URL& URL::operator=(const std::string& urlString) {
-  if (urlString.find("://") != std::string::npos) {
+URL& URL::operator=(const std::string& url_string) {
+  if (url_string.find("://") != std::string::npos) {
     // absolute URL: assign and reparse directly
-    rawUrl_ = urlString;
-    queryParams_.reset();
+    raw_url_ = url_string;
+    props_.query.reset();
     Parse();
   } else {
     // relative URL: resolve against current, then assign via copy‐assign
-    URL resolved = this->Resolve(urlString);
+    URL resolved = this->Resolve(url_string);
     *this = resolved;  // invokes the default URL& operator=(const URL&)
   }
   return *this;
@@ -172,7 +174,7 @@ URL URL::Resolve(const std::string& ref) const {
 
 void URL::Parse() {
   // Simplified parser for starter purposes.
-  static const std::regex urlRegex(
+  static const std::regex url_regex(
     // 1: optional “scheme://”   → group 1 = entire “https://”, group 2 =
     // “https” 2: host                   → group 3 3: path                   →
     // group 4 (optional) 4: query (including '?')  → group 5 (optional) 5:
@@ -180,15 +182,15 @@ void URL::Parse() {
     R"(^((https?)://)?([^/?#]+)(/[^?#]*)?(\?[^#]*)?(#.*)?$)",
     std::regex::extended);
   std::smatch match;
-  if (std::regex_match(rawUrl_, match, urlRegex)) {
+  if (std::regex_match(raw_url_, match, url_regex)) {
     scheme_ = match[2].matched ? match[2].str() : "";
     host_ = match[3];
     path_ = match[4].matched ? match[4].str() : "";
     query_ = match[5].matched ? match[5].str() : "";
     fragment_ = match[6].matched ? match[6].str().substr(1) : "";
-    sha256_.clear();
+    props_.Clear();
   } else {
-    logr::warning << "INVALID URL: " << rawUrl_;
+    logr::warning << "INVALID URL: " << raw_url_;
   }
 }
 
@@ -197,10 +199,10 @@ bool URL::IsValid() const {
 }
 
 void URL::ParseQueryParams() const {
-  if (queryParams_.has_value())
+  if (props_.query.has_value())
     return;
 
-  queryParams_.emplace();  // Initialize empty vector
+  props_.query.emplace();  // Initialize empty vector
 
   if (query_.empty() || query_[0] != '?')
     return;
@@ -208,31 +210,31 @@ void URL::ParseQueryParams() const {
   size_t start = 1;  // Skip '?'
 
   while (start < query_.size()) {
-    size_t eqPos = query_.find('=', start);
-    size_t ampPos = query_.find('&', start);
+    size_t eq_pos = query_.find('=', start);
+    size_t amp_pos = query_.find('&', start);
 
     std::string key;
     std::optional<std::string> value;
 
-    if (eqPos != std::string::npos &&
-        (ampPos == std::string::npos || eqPos < ampPos)) {
+    if (eq_pos != std::string::npos &&
+        (amp_pos == std::string::npos || eq_pos < amp_pos)) {
       // Case: key=value
-      key = query_.substr(start, eqPos - start);
+      key = query_.substr(start, eq_pos - start);
 
-      if (ampPos != std::string::npos) {
-        value = query_.substr(eqPos + 1, ampPos - eqPos - 1);
-        start = ampPos + 1;
+      if (amp_pos != std::string::npos) {
+        value = query_.substr(eq_pos + 1, amp_pos - eq_pos - 1);
+        start = amp_pos + 1;
       } else {
-        value = query_.substr(eqPos + 1);
+        value = query_.substr(eq_pos + 1);
         start = query_.size();
       }
 
     } else {
       // Case: key with no value (no '=' found before next '&' or end)
-      if (ampPos != std::string::npos) {
-        key = query_.substr(start, ampPos - start);
+      if (amp_pos != std::string::npos) {
+        key = query_.substr(start, amp_pos - start);
         value = std::nullopt;
-        start = ampPos + 1;
+        start = amp_pos + 1;
       } else {
         key = query_.substr(start);
         value = std::nullopt;
@@ -242,7 +244,7 @@ void URL::ParseQueryParams() const {
 
     // Only insert non-empty keys
     if (!key.empty()) {
-      queryParams_->emplace_back(key, value);
+      props_.query->emplace_back(key, value);
     }
   }
 }
@@ -333,15 +335,15 @@ std::string URL::GetPath() const {
 }
 
 std::string URL::GetQuery() const {
-  if (!queryParams_.has_value()) {
+  if (!props_.query.has_value()) {
     return query_;
   }
 
   std::string result;
-  if (!queryParams_->empty()) {
+  if (!props_.query->empty()) {
     result += '?';
     bool first = true;
-    for (const auto& [key, value] : *queryParams_) {
+    for (const auto& [key, value] : *props_.query) {
       if (!first) {
         result += '&';
       } else {
@@ -364,7 +366,7 @@ std::optional<std::vector<std::optional<std::string>>> URL::GetQueryParam(
   const std::string& key) const {
   ParseQueryParams();
   std::vector<std::optional<std::string>> values;
-  for (const auto& [param, value] : *queryParams_) {
+  for (const auto& [param, value] : *props_.query) {
     if (param == key)
       values.push_back(value);
   }
@@ -375,11 +377,11 @@ std::optional<std::vector<std::optional<std::string>>> URL::GetQueryParam(
 
 const char* URL::c_str() const {
   ToString();
-  return url_.c_str();
+  return props_.url.c_str();
 }
 
 std::string URL::ToString() const {
-  if (url_.empty()) {
+  if (props_.url.empty()) {
     std::string url;
     if (!scheme_.empty()) {
       url += scheme_;
@@ -397,40 +399,40 @@ std::string URL::ToString() const {
     }
 
     url +=
-      GetQuery();  // Will compose from queryParams if parsed, else raw query
+      GetQuery();  // Will compose from query_params if parsed, else raw query
 
     if (!fragment_.empty()) {
       url += '#';
       url += fragment_;
     }
-    url_.swap(url);
+    props_.url.swap(url);
   }
-  return url_;
+  return props_.url;
 }
 
 void URL::SetScheme(const std::string& s) {
-  url_.clear();
+  props_.Clear();
   scheme_ = s;
 }
 void URL::SetHost(const std::string& h) {
-  url_.clear();
+  props_.Clear();
   host_ = h;
 }
 void URL::SetPath(const std::string& p) {
-  url_.clear();
+  props_.Clear();
   path_ = p;
 }
 void URL::SetQuery(const std::string& q) {
-  url_.clear();
+  props_.Clear();
   query_ = q;
-  queryParams_.reset();
+  props_.query.reset();
 }
 
 void URL::SetQueryParam(const std::string& key,
                         std::optional<std::string> value) {
-  url_.clear();
+  props_.Clear();
   ParseQueryParams();
-  auto& vec = *queryParams_;
+  auto& vec = *props_.query;
 
   auto it = std::find_if(vec.begin(), vec.end(),
                          [&](auto& kv) { return kv.first == key; });
@@ -447,16 +449,16 @@ void URL::SetQueryParam(const std::string& key,
 void URL::AppendQueryParam(const std::string& key,
                            std::optional<std::string> value) {
   ParseQueryParams();
-  queryParams_->emplace_back(key, std::move(value));
+  props_.query->emplace_back(key, std::move(value));
 }
 
 void URL::SetFragment(const std::string& f) {
-  url_.clear();
+  props_.Clear();
   fragment_ = f;
 }
 
 std::string URL::GetSha256() const {
-  if (sha256_.empty()) {
+  if (props_.sha256.empty()) {
     auto url = ToString();
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((const unsigned char*)url.c_str(), url.size(), hash);
@@ -464,9 +466,27 @@ std::string URL::GetSha256() const {
     for (auto byte : hash) {
       oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
     }
-    sha256_ = oss.str();
+    props_.sha256 = oss.str();
   }
-  return sha256_;
+  return props_.sha256;
+}
+
+// --- New: 64-bit stable ID from SHA-256(ToString()) ---
+std::uint64_t URL::GetID() const noexcept {
+  if (props_.id64 == 0) {
+    // Compute raw SHA-256 of the canonical string
+    const std::string url = ToString();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(url.data()), url.size(),
+           hash);
+    // Take the first 8 bytes as a 64-bit value (big-endian to be stable)
+    std::uint64_t v = 0;
+    for (int i = 0; i < 8; ++i) {
+      v = (v << 8) | static_cast<std::uint64_t>(hash[i]);
+    }
+    props_.id64 = v;
+  }
+  return props_.id64;
 }
 
 bool URL::HostIsIPv4() const {
