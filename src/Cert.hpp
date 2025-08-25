@@ -53,6 +53,9 @@ class Cert {
   // caches).
   std::vector<std::string> ExtractAiaUrls(const std::string& url);
 
+  bool ApplyHostBundle(CURL* easy, const std::string& host) const;
+  bool RebuildHostBundle(const std::string& host);
+
   // Extract PEM from CURL's certinfo (leaf cert only).
   static std::string LeafPemFromCertinfo(CURL* easy);
 
@@ -87,6 +90,9 @@ class Cert {
                               const std::string& pem) const;
 
  private:
+  // host -> on-disk bundle path
+  mutable std::unordered_map<std::string, std::string> bundle_path_by_host_;
+
   struct AiaCacheEntry {
     std::vector<std::string> urls;  // May be empty → "negative" cache.
     bool negative = false;

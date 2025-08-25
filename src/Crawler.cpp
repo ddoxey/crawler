@@ -123,9 +123,15 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
 
   // Make sure TLS trust uses your CentOS CA bundle
-  curl_easy_setopt(curl, CURLOPT_CAINFO, cert_.GetBaseCaPath().c_str());
+  const auto base = cert_.GetBaseCaPath();
+  if (!base.empty() && std::filesystem::exists(base)) {
+    curl_easy_setopt(curl, CURLOPT_CAINFO, base.c_str());
+  }
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+  // If we have a per-host bundle, this upgrades trust for this host transparently
+  cert_.ApplyHostBundle(curl, url.GetHost());
 
   HttpResponse resp;
 
@@ -151,20 +157,17 @@ std::optional<HttpResponse> Crawler::Fetch(const URL& url) {
   } else if (code == CURLE_PEER_FAILED_VERIFICATION ||
              (errbuf[0] &&
               std::strstr(errbuf, "unable to get local issuer certificate"))) {
-    logr::warning << "[Crawler] Attempt fetch of intermediate certs for: "
-                  << url.GetDomain();
-
     TempPem hold;  // if we create a temp bundle, this keeps it alive until the
                    // retry returns
     if (cert_.AugmentWithIntermediates(curl, url.ToString(), hold)) {
-      logr::info << "SUCCESS";
+      logr::info << "[Crawler] Fetched intermediate certs for: " << url;
       // Re-enable strict verify (AugmentWithIntermediates uses a separate
       // probe)
       curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
       curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
       code = curl_easy_perform(curl);
     } else {
-      logr::error << "FAIL";
+      logr::error << "[Crawler] Failed to fetch intermediate certs for: " << url;
     }
   }
 

@@ -21,6 +21,7 @@
 #include <unistd.h>  // mkstemps, unlink
 #include <curl/curl.h>
 
+#include <openssl/cms.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -89,8 +90,20 @@ bool Cert::HttpGetToString(const std::string& url, std::string& out) {
   curl_easy_setopt(h, CURLOPT_USERAGENT, "curl/7.x (crawler)");
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &WriteStrCb);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 4000L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 10000L);
+
+  struct curl_slist* hdrs = nullptr;
+  hdrs =
+    curl_slist_append(hdrs,
+                      "Accept: application/pkix-cert, application/pkcs7-mime, "
+                      "application/x-pkcs7-certificates, "
+                      "application/x-x509-ca-cert;q=0.9, */*;q=0.5");
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
 
   const auto rc = curl_easy_perform(h);
+  if (hdrs)
+    curl_slist_free_all(hdrs);
   curl_easy_cleanup(h);
   return rc == CURLE_OK;
 }
@@ -99,27 +112,61 @@ std::string Cert::EnsurePem(const std::string& der_or_pem) {
   if (der_or_pem.find("-----BEGIN CERTIFICATE-----") != std::string::npos) {
     return der_or_pem;  // already PEM
   }
-  // treat as DER
+  // Try DER → single X509
   const unsigned char* p =
     reinterpret_cast<const unsigned char*>(der_or_pem.data());
   X509* x = d2i_X509(nullptr, &p, static_cast<long>(der_or_pem.size()));
-  if (!x)
-    return {};
-
-  std::string pem;
-  BIO* bio = BIO_new(BIO_s_mem());
-  if (bio) {
-    if (PEM_write_bio_X509(bio, x)) {
-      BUF_MEM* mem = nullptr;
-      BIO_get_mem_ptr(bio, &mem);
-      if (mem && mem->data && mem->length > 0) {
-        pem.assign(mem->data, mem->length);
+  if (x) {
+    std::string pem;
+    BIO* bio = BIO_new(BIO_s_mem());
+    if (bio) {
+      if (PEM_write_bio_X509(bio, x)) {
+        BUF_MEM* mem = nullptr;
+        BIO_get_mem_ptr(bio, &mem);
+        if (mem && mem->data && mem->length > 0) {
+          pem.assign(mem->data, mem->length);
+        }
       }
+      BIO_free(bio);
     }
-    BIO_free(bio);
+    X509_free(x);
+    if (!pem.empty())
+      return pem;
   }
-  X509_free(x);
-  return pem;
+
+  // Try CMS/PKCS#7 “certs only” (common AIA response, .p7c)
+  std::string pem_multi;
+  BIO* in = BIO_new_mem_buf(der_or_pem.data(), (int)der_or_pem.size());
+  if (in) {
+    CMS_ContentInfo* ci = d2i_CMS_bio(in, nullptr);
+    if (ci) {
+      STACK_OF(X509)* certs = CMS_get1_certs(ci);  // caller owns returned stack
+      if (certs) {
+        BIO* out = BIO_new(BIO_s_mem());
+        if (out) {
+          for (int i = 0; i < sk_X509_num(certs); ++i) {
+            X509* c = sk_X509_value(certs, i);
+            // Append each as PEM
+            if (PEM_write_bio_X509(out, c) != 1)
+              continue;
+          }
+          BUF_MEM* mem = nullptr;
+          BIO_get_mem_ptr(out, &mem);
+          if (mem && mem->data && mem->length > 0) {
+            pem_multi.assign(mem->data, mem->length);
+          }
+          BIO_free(out);
+        }
+        sk_X509_pop_free(certs, X509_free);
+      }
+      CMS_ContentInfo_free(ci);
+    }
+    BIO_free(in);
+  }
+  if (!pem_multi.empty())
+    return pem_multi;
+
+  return {};
 }
 
 std::string Cert::ExtractIssuerCNFromPem(const std::string& pem) {
@@ -283,6 +330,14 @@ std::vector<std::string> Cert::ExtractAiaUrls(const std::string& url) {
   curl_easy_setopt(h, CURLOPT_CERTINFO, 1L);
   curl_easy_setopt(h, CURLOPT_USERAGENT, "curl/7.x (crawler)");
 
+  // We just want the leaf's AIA; don't block on verification here.
+  curl_easy_setopt(h, CURLOPT_SSL_VERIFYPEER, 0L);
+  curl_easy_setopt(h, CURLOPT_SSL_VERIFYHOST, 0L);
+
+  // Be a good citizen on flaky hosts
+  curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 4000L);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 8000L);
+
   CURLcode code;
   if (Cert::TestHooks::force_perform_result) {
     code = *Cert::TestHooks::force_perform_result;
@@ -332,6 +387,93 @@ std::vector<std::string> Cert::ExtractAiaUrls(const std::string& url) {
   return urls;
 }
 
+bool Cert::RebuildHostBundle(const std::string& host) {
+  if (pem_dir_.empty() || base_ca_path_.empty()) return false;
+  if (!std::filesystem::exists(base_ca_path_))   return false;
+
+  std::error_code ec;
+  const auto bundle_dir = pem_dir_ / "bundles";
+  std::filesystem::create_directories(bundle_dir, ec);
+
+  const auto bundle_path = (bundle_dir / (host + ".bundle.pem")).string();
+
+  // Start with the base bundle
+  std::ifstream in(base_ca_path_);
+  if (!in) return false;
+
+  std::string combined((std::istreambuf_iterator<char>(in)), {});
+  if (combined.empty() || combined.back() != '\n') combined.push_back('\n');
+
+  // Append any issuer PEMs we previously persisted for this host
+  // Pattern: "<host>__<issuer>.pem"
+  for (auto const& entry : std::filesystem::directory_iterator(pem_dir_, ec)) {
+    if (ec) break;
+    if (!entry.is_regular_file()) continue;
+    const auto name = entry.path().filename().string();
+
+    // Naive prefix/suffix check (keeps it simple & fast)
+    const std::string prefix = host + "__";
+    const std::string suffix = ".pem";
+    if (name.rfind(prefix, 0) == 0 && name.size() > prefix.size() + suffix.size() &&
+        name.substr(name.size() - suffix.size()) == suffix) {
+      std::ifstream p(entry.path());
+      if (!p) continue;
+      combined.append((std::istreambuf_iterator<char>(p)), {});
+      if (combined.empty() || combined.back() != '\n') combined.push_back('\n');
+    }
+  }
+
+  // Write out the per-host bundle (idempotent)
+  std::ofstream out(bundle_path, std::ios::binary | std::ios::trunc);
+  if (!out) return false;
+  out.write(combined.data(), static_cast<std::streamsize>(combined.size()));
+  out.flush();
+
+  bundle_path_by_host_[host] = bundle_path;
+  return true;
+}
+
+bool Cert::ApplyHostBundle(CURL* easy, const std::string& host) const {
+  // If we have a cached path and it still exists, use it.
+  auto it = bundle_path_by_host_.find(host);
+  if (it != bundle_path_by_host_.end() && std::filesystem::exists(it->second)) {
+    // Prefer CAINFO_BLOB if supported; otherwise CAINFO path
+#if LIBCURL_VERSION_NUM >= 0x074700
+    if (supports_cainfo_blob_) {
+      std::ifstream f(it->second, std::ios::binary);
+      if (f) {
+        std::string blob((std::istreambuf_iterator<char>(f)), {});
+        if (!blob.empty()) {
+          curl_blob b{ const_cast<char*>(blob.data()), blob.size(), CURL_BLOB_COPY };
+          return curl_easy_setopt(easy, CURLOPT_CAINFO_BLOB, &b) == CURLE_OK;
+        }
+      }
+    }
+#endif
+    return curl_easy_setopt(easy, CURLOPT_CAINFO, it->second.c_str()) == CURLE_OK;
+  }
+
+  // Try to rebuild (e.g., first time after a new issuer was saved)
+  Cert* self = const_cast<Cert*>(this); // for map update
+  if (!self->RebuildHostBundle(host)) return false;
+
+  const auto& path = bundle_path_by_host_.at(host);
+
+#if LIBCURL_VERSION_NUM >= 0x074700
+  if (supports_cainfo_blob_) {
+    std::ifstream f(path, std::ios::binary);
+    if (f) {
+      std::string blob((std::istreambuf_iterator<char>(f)), {});
+      if (!blob.empty()) {
+        curl_blob b{ const_cast<char*>(blob.data()), blob.size(), CURL_BLOB_COPY };
+        return curl_easy_setopt(easy, CURLOPT_CAINFO_BLOB, &b) == CURLE_OK;
+      }
+    }
+  }
+#endif
+  return curl_easy_setopt(easy, CURLOPT_CAINFO, path.c_str()) == CURLE_OK;
+}
+
 // Attempt to augment CA trust for a connection with intermediates fetched via
 // AIA. On success, configures libcurl to use a combined CA bundle (temp file or
 // BLOB).
@@ -347,6 +489,9 @@ bool Cert::AugmentWithIntermediates(CURL* easy, const std::string& url,
   const std::string domain = HostFromUrl(url);
 
   for (const auto& issuer_url : aia) {
+    if (issuer_url.rfind("ldap://", 0) == 0)
+      continue;  // not supported
+
     std::string raw;
     if (!HttpGetToString(issuer_url, raw))
       continue;
@@ -360,23 +505,38 @@ bool Cert::AugmentWithIntermediates(CURL* easy, const std::string& url,
       continue;
 
     const bool already =
-      (issuer_pem_cache_.find(issuer_cn) != issuer_pem_cache_.end());
+        (issuer_pem_cache_.find(issuer_cn) != issuer_pem_cache_.end());
     if (!already)
       issuer_pem_cache_.emplace(issuer_cn, pem);
+
     if (!already) {
+      // Persist new issuer PEMs to pem_dir_ if configured
       PersistPemIfConfigured(domain, issuer_cn, pem);
       extras.push_back(std::move(pem));
     }
   }
 
+  // If we discovered nothing new, there’s nothing to apply.
   if (extras.empty())
     return false;
 
-  // 3) Apply combined bundle (prefer in-memory blob; else temp file)
+  // **NEW SECTION: Build or refresh the per-host bundle and apply it**
+  // This replaces temp files and one-shot blobs.
+  if (RebuildHostBundle(domain)) {
+    if (ApplyHostBundle(easy, domain)) {
+      return true;
+    }
+    // If applying the host bundle fails, we still fall through and try temp blob.
+  }
+
+  // --- EXISTING FALLBACK BEHAVIOR ---
+  // If CAINFO_BLOB is supported and you still want to use in-memory blobs,
+  // you can keep this block as a fallback:
   if (supports_cainfo_blob_ && ApplyCombinedViaBlob(easy, extras)) {
     return true;
   }
 
+  // Otherwise, last resort: write a temporary bundle (same as before)
   std::string tmp = WriteTempBundle(extras);
   if (!tmp.empty()) {
     hold = TempPem{std::move(tmp)};  // keep alive through retry
