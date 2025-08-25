@@ -126,7 +126,7 @@ local function parse_meta_refresh(meta_tag)
 end
 
 function M.detect_client_redirect(html)
-  -- 1) META REFRESH
+  -- META REFRESH
   for tag in html:gmatch("<%s*[Mm][Ee][Tt][Aa][^>]*>") do
     local mr = parse_meta_refresh(tag)
     if mr then
@@ -138,67 +138,6 @@ function M.detect_client_redirect(html)
       }
     end
   end
-
-  -- 2) JS location assignment patterns
-  html = strip_js_comments(html)
-
-  -- Minimal helpers
-  local function esc(s)  -- escape Lua pattern magic
-    return (s:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"))
-  end
-  -- Make a case-insensitive Lua pattern from a plain string
-  local function ci(s)
-    return (s:gsub("%a", function(c)
-      return "[" .. c:lower() .. c:upper() .. "]"
-    end))
-  end
-  -- Your identifier set (order == precedence). Put *.href first if you want it to win.
-  local idents = {
-    "window.location.href", "location.href", "document.location.href", "top.location.href",
-    "window.location", "location", "document.location", "top.location",
-  }
-  local methods = {
-    "assign",
-    "replace",
-  }
-  local captures = {
-    [["([^"]+)"]],  -- double-quoted value
-    [['([^']+)']],  -- single-quoted value
-  }
-
-  local patterns = {}
-  for _, ident in ipairs(idents) do
-    local ip = ci(esc(ident))
-    -- Property assignment: *.location = "..."
-    --                      *.location.href = "..."
-    for _, cap in ipairs(captures) do
-      table.insert(patterns, ip .. "%s*=%s*" .. cap)
-    end
-
-    -- Method calls only apply to *.location (not *.location.href)
-    -- i.e. *.location.assign("...")  /  *.location.replace("...")
-    if not ip:match("%%.href$") then
-      for _, m in ipairs(methods) do
-        for _, cap in ipairs(captures) do
-          table.insert(patterns,
-                       ip .. "%s*%.%s*" .. "%s*" .. m .. "%s*%(%s*" .. cap .. "%s*%)")
-        end
-      end
-    end
-  end
-
-  for _, p in ipairs(patterns) do
-    local u = html:match(p)
-    if u then
-      return {
-        url   = trim(unescape_html(u)),
-        delay = 0,
-        type  = "js",
-        base  = M.extract_base(html),
-      }
-    end
-  end
-
   return nil
 end
 
